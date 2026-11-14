@@ -25,14 +25,18 @@ public static class GitHubToken
     public static string? Resolve(string? appVariable = null, Func<string?>? ghAuthToken = null, string? tokenFile = null) =>
         Find(appVariable, ghAuthToken, tokenFile).Token;
 
-    public static GitHubTokenFound Find(string? appVariable = null, Func<string?>? ghAuthToken = null, string? tokenFile = null)
+    public static GitHubTokenFound Find(string? appVariable = null, Func<string?>? ghAuthToken = null, string? tokenFile = null) =>
+        Find(appVariable, ghAuthToken, tokenFile is null ? null : new FileTokenStore(tokenFile));
+
+    /// <summary>The same lookup, with the saved token coming from <paramref name="saved"/> (an app's own credential store, say).</summary>
+    public static GitHubTokenFound Find(string? appVariable, Func<string?>? ghAuthToken, ITokenStore? saved)
     {
         foreach (var name in new[] { appVariable, "GH_TOKEN", "GITHUB_TOKEN" })
         {
             if (string.IsNullOrEmpty(name)) continue;
             if (Environment.GetEnvironmentVariable(name) is { Length: > 0 } v) return new(v.Trim(), name);
         }
-        if (tokenFile is not null && ReadSaved(tokenFile) is { } saved) return new(saved, "saved token");
+        if (saved?.Read() is { Length: > 0 } token) return new(token, "saved token");
         return (ghAuthToken ?? FromGhCli)() is { } gh ? new(gh, "gh sign-in") : GitHubTokenFound.None;
     }
 

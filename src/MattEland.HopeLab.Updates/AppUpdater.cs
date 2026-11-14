@@ -38,7 +38,11 @@ public sealed record AppUpdateOptions(string AppName, string Repository, string 
     /// <summary>The GitHub CLI's sign-in, as a last resort for a token. Defaults to running <c>gh</c>; tests replace it.</summary>
     public Func<string?>? GitHubCliToken { get; init; }
 
+    /// <summary>Where a saved token lives. Defaults to <see cref="TokenFile"/>, user-only.</summary>
+    public ITokenStore? TokenStore { get; init; }
+
     public string TokenFile => Path.Combine(DataDirectory, "github-token");
+    public ITokenStore Tokens => TokenStore ?? new FileTokenStore(TokenFile);
     public string UpdatesDirectory => Path.Combine(DataDirectory, "updates");
 }
 
@@ -121,10 +125,10 @@ public sealed class AppUpdater
     /// The token requests would use, and where it comes from. This may run the GitHub CLI (up to a few seconds), so a UI
     /// calls it off the UI thread (<see cref="AppUpdateService"/> does).
     /// </summary>
-    public GitHubTokenFound FindToken() => GitHubToken.Find(_options.TokenVariable, _options.GitHubCliToken, _options.TokenFile);
+    public GitHubTokenFound FindToken() => GitHubToken.Find(_options.TokenVariable, _options.GitHubCliToken, _options.Tokens);
 
     /// <summary>Whether a token is saved on this machine, whichever source is used first.</summary>
-    public bool HasSavedToken => GitHubToken.ReadSaved(_options.TokenFile) is not null;
+    public bool HasSavedToken => _options.Tokens.Read() is not null;
 
     /// <summary>
     /// Checks the token itself against GitHub (not whatever token currently takes precedence), and saves it only if it
@@ -151,13 +155,13 @@ public sealed class AppUpdater
             else message = $"It couldn't be checked now ({access.Error}), so it was saved as it is."; // offline: keep it
         }
 
-        var saved = await GitHubToken.SaveAsync(_options.TokenFile, candidate).ConfigureAwait(false);
+        var saved = await _options.Tokens.SaveAsync(candidate).ConfigureAwait(false);
         if (!saved.IsSuccess) return Result<string>.Fail(saved.Error!);
         var first = await Task.Run(FindToken, ct).ConfigureAwait(false);
         return Result<string>.Ok($"Saved. {message}" + (first.Source == "saved token" ? "" : $" {first.Source} is set too and is used first, though."));
     }
 
-    public Result<Unit> ClearToken() => GitHubToken.Clear(_options.TokenFile);
+    public Result<Unit> ClearToken() => _options.Tokens.Clear();
 
     // --- check, download, install ---
 
@@ -292,6 +296,9 @@ public sealed class AppUpdater
         var warning = await RestartAsync(restart, CancellationToken.None).ConfigureAwait(false);
         if (exit != 0)
         {
+            // Only a refused or failed authentication means apt-get never ran. Any other failure can come after dpkg
+            // started replacing files, so it may have left a partial install: say so, and how to finish it.
+            var notRun = exit is 126 or 127 && file == "pkexec" || exit == 127;
             var why = exit switch
             {
                 126 when file == "pkexec" => "The password prompt was cancelled.",
@@ -299,8 +306,9 @@ public sealed class AppUpdater
                 127 => $"{file} couldn't be started.",
                 _ => $"{file} apt-get install exited with {exit}.",
             };
-            return Result<UpdateInstallResult>.Fail(
-                $"{why} {_options.AppName} {CurrentVersion} is still installed. Or install it yourself: sudo apt install {Path.GetFullPath(deb)}");
+            return Result<UpdateInstallResult>.Fail(notRun
+                ? $"{why} {_options.AppName} {CurrentVersion} is still installed. Or install it yourself: sudo apt install {Path.GetFullPath(deb)}"
+                : $"{why} The install may be incomplete. Finish it with: sudo apt install {Path.GetFullPath(deb)} (or sudo dpkg --configure -a), then reopen {_options.AppName}.");
         }
 
         // The package replaced release.json too; make sure it is the version we meant.

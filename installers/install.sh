@@ -129,6 +129,7 @@ stop_app() {
 
 if [ "$UNINSTALL" = 1 ]; then
   [ -f "$APP/hopelab-install.json" ] && load_settings "$APP/hopelab-install.json" "" || { EXE="$NAME"; COMMANDS=""; PROCESSES=""; STOP=""; BEFORE_UNINSTALL=""; UNIT=""; DATA_DIR=""; UNINSTALL_NOTE=""; }
+  EXE="${EXE:-$NAME}"
   say "Removing $NAME from $APP"
   if [ -n "$BEFORE_UNINSTALL" ]; then (cd "$APP" && eval "./$BEFORE_UNINSTALL" >/dev/null 2>&1) || true; fi
   stop_app
@@ -199,6 +200,7 @@ manifest_url="$(asset_url latest.json)"
 [ -n "$manifest_url" ] || die "the release has no latest.json."
 api "$manifest_url" "application/octet-stream" "$WORK/latest.json"
 load_settings "$WORK/latest.json" install
+EXE="${EXE:-$NAME}"   # a release without install settings: the app's name is its executable
 NAME="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("app") or sys.argv[2])' "$WORK/latest.json" "$NAME")"
 
 read -r ver archive sha < <(python3 -c '
