@@ -69,6 +69,8 @@ jobs:
           dpkg-deb --contents dist/demo_0.1.42_amd64.deb | grep -q './opt/demo/Demo'
           dpkg-deb --contents dist/demo_0.1.42_amd64.deb | grep -q './usr/bin/demo-cli -> /opt/demo/demo-cli'
           sudo apt-get install -y ./dist/demo_0.1.42_amd64.deb
+          # Installed as root, used by everyone: the folder and its files must be readable without sudo.
+          [ "$(stat -c %a /opt/demo)" = 755 ] || { echo "/opt/demo is $(stat -c %a /opt/demo)"; exit 1; }
           grep -q '"package": "deb"' /opt/demo/release.json
           demo-cli
           sudo apt-get remove -y demo

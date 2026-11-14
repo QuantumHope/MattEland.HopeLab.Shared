@@ -69,6 +69,11 @@ EOF
 depends="libc6 (>= 2.35), libstdc++6, libgcc-s1, zlib1g, libssl3 | libssl3t64, libfontconfig1, libicu70 | libicu71 | libicu72 | libicu73 | libicu74 | libicu75 | libicu76"
 [ -n "$EXTRA_DEPENDS" ] && depends="$depends, $EXTRA_DEPENDS"
 recommends="policykit-1 | pkexec${RECOMMENDS:+, $RECOMMENDS}"
+# Readable by everyone, writable by root only, whatever the published folder's own modes were (cp -a copies the
+# source folder's mode onto /opt/<id>, and a mktemp folder is 700). Execute bits on files are kept as published.
+chmod -R u+rwX,go+rX,go-w "$root/opt" "$root/usr"
+chmod 0755 "$root/opt" "$opt"
+
 size_kb=$(du -sk "$root" | cut -f1)
 {
   echo "Package: $ID"
