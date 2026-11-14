@@ -1,0 +1,364 @@
+using System.Diagnostics;
+using MattEland.HopeLab.Common;
+
+namespace MattEland.HopeLab.Updates;
+
+/// <summary>Restarts what <see cref="StopServicesAsync"/> stopped. Its error becomes <see cref="UpdateInstallResult.ServiceWarning"/>.</summary>
+public delegate Task<Result<Unit>> RestartServicesAsync(CancellationToken ct);
+
+/// <summary>
+/// Stops what the app runs beside its main executable (OneRing's ring-host, say) so its files can be replaced, and
+/// returns how to start it again — or null when nothing was running. Called just before files are replaced, and the
+/// restart just after, whether or not the install worked.
+/// </summary>
+public delegate Task<RestartServicesAsync?> StopServicesAsync(string installDirectory, CancellationToken ct);
+
+/// <summary>What an app tells <see cref="AppUpdater"/> about itself.</summary>
+/// <param name="AppName">Shown in messages ("OneRing 0.1.5 is still installed").</param>
+/// <param name="Repository"><c>owner/name</c> of the GitHub repository the releases come from.</param>
+/// <param name="DataDirectory">The app's per-user folder (<c>~/.onering</c>): downloads go in <c>updates/</c>, a saved
+/// GitHub token in <c>github-token</c>.</param>
+/// <param name="DesktopExecutable">The app's main executable, without <c>.exe</c>, relaunched after an update.</param>
+public sealed record AppUpdateOptions(string AppName, string Repository, string DataDirectory, string DesktopExecutable)
+{
+    /// <summary>An app-specific environment variable for a GitHub token, checked before GH_TOKEN and GITHUB_TOKEN.</summary>
+    public string? TokenVariable { get; init; }
+
+    /// <summary>The Inno Setup AppId of the app's Windows setup, so an in-place update can move Apps &amp; features along.</summary>
+    public string? WindowsSetupAppId { get; init; }
+
+    /// <summary>The folder being updated. Defaults to the running executable's own folder.</summary>
+    public string? InstallDirectory { get; init; }
+
+    /// <summary>The running version when there is no release stamp (a build from source). Defaults to the entry assembly's.</summary>
+    public string? RunningVersion { get; init; }
+
+    public StopServicesAsync? StopServices { get; init; }
+
+    public string TokenFile => Path.Combine(DataDirectory, "github-token");
+    public string UpdatesDirectory => Path.Combine(DataDirectory, "updates");
+}
+
+/// <summary>What an install did, for the caller to report and act on.</summary>
+/// <param name="DesktopExecutable">The (new) app, for the desktop to relaunch.</param>
+/// <param name="ServicesRestarted">Something was running beside the app and has been started again from the new files.</param>
+public sealed record UpdateInstallResult(ReleaseVersion Version, int Files, string DesktopExecutable, bool ServicesRestarted, string? ServiceWarning);
+
+/// <summary>
+/// Updates an installed copy of an app from its GitHub releases, in the folder it is installed in:
+/// <list type="number">
+/// <item>check <c>latest.json</c> on the latest release against the running version;</item>
+/// <item>download the asset for this copy into <c>&lt;data&gt;/updates/&lt;version&gt;/</c> and check its SHA-256;</item>
+/// <item>stop the app's services, install, and start them again: a folder install (archive, install script, per-user
+/// setup) has its files swapped in place (<see cref="InstallSwap"/>); a Debian package install runs
+/// <c>apt-get install</c> on the next <c>.deb</c>, which asks for a password.</item>
+/// </list>
+/// The install folder never moves, so anything that holds an absolute path into it keeps working. Only a copy with a
+/// <see cref="ReleaseStamp"/> (written by the release build) updates itself; a build from source says why not.
+/// </summary>
+public sealed class AppUpdater
+{
+    private static readonly HttpClient SharedHttp = new() { Timeout = TimeSpan.FromMinutes(10) };
+
+    private readonly AppUpdateOptions _options;
+    private readonly IClock _clock;
+    private readonly GitHubReleases _releases;
+
+    public AppUpdater(AppUpdateOptions options, IClock clock, GitHubReleases? releases = null)
+    {
+        _options = options;
+        _clock = clock;
+        InstallDirectory = Path.GetFullPath(options.InstallDirectory ?? OwnDirectory);
+        Stamp = ReleaseStamp.Read(InstallDirectory);
+        _releases = releases ?? new GitHubReleases(SharedHttp, options.Repository, () => FindToken().Token,
+            $"{options.AppName.Replace(' ', '-')}/{CurrentVersion}");
+    }
+
+    /// <summary>The folder of the running executable (not the working directory).</summary>
+    public static string OwnDirectory =>
+        (Environment.ProcessPath is { Length: > 0 } p ? Path.GetDirectoryName(p) : null) ?? AppContext.BaseDirectory;
+
+    public AppUpdateOptions Options => _options;
+    public string InstallDirectory { get; }
+
+    /// <summary>The release this copy was built as, or null for a build from source.</summary>
+    public ReleaseStamp? Stamp { get; }
+
+    public ReleaseVersion CurrentVersion =>
+        ReleaseVersion.TryParse(Stamp?.Version ?? _options.RunningVersion ?? EntryVersion(), out var v) ? v.Value : new ReleaseVersion(0, 0, 0);
+
+    public string? Rid => Stamp?.Rid ?? UpdateChecker.CurrentRid();
+    public string ReleasesUrl => $"https://github.com/{_options.Repository}/releases";
+
+    /// <summary>Why this copy can't update itself, or null when it can.</summary>
+    public string? NotUpdatableReason =>
+        Stamp is null ? "This copy was built from source, so it doesn't update itself. Pull and rebuild instead, or install a release."
+        : Rid is null ? $"There are no {_options.AppName} releases for this operating system yet."
+        : null;
+
+    public bool CanUpdate => NotUpdatableReason is null;
+
+    /// <summary>Installed from the Debian package: updated by installing the next package, as root.</summary>
+    public bool IsDebPackage => Stamp?.Package == ReleaseStamp.DebPackage;
+
+    /// <summary>The <c>latest.json</c> key this copy updates from (<c>linux-x64</c>, or <c>linux-x64.deb</c> for the package).</summary>
+    public string? AssetKey => Stamp?.AssetKey ?? Rid;
+
+    public string DesktopExecutablePath =>
+        Path.Combine(InstallDirectory, _options.DesktopExecutable + (OperatingSystem.IsWindows() ? ".exe" : ""));
+
+    // --- GitHub access ---
+
+    /// <summary>The token requests would use, and where it comes from.</summary>
+    public GitHubTokenFound FindToken() => GitHubToken.Find(_options.TokenVariable, tokenFile: _options.TokenFile);
+
+    /// <summary>Saves a token for this machine, then checks GitHub accepts it. The message says what GitHub made of it.</summary>
+    public async Task<Result<string>> SaveTokenAsync(string token, CancellationToken ct = default)
+    {
+        var previous = GitHubToken.ReadSaved(_options.TokenFile); // put back if the new one is refused
+        var saved = await GitHubToken.SaveAsync(_options.TokenFile, token).ConfigureAwait(false);
+        if (!saved.IsSuccess) return Result<string>.Fail(saved.Error!);
+        if (FindToken() is { Source: not "saved token" } other)
+            return Result<string>.Ok($"Saved. {other.Source} is set too and is used first, though.");
+
+        var latest = await _releases.LatestAsync(ct).ConfigureAwait(false);
+        if (latest.IsSuccess) return Result<string>.Ok($"Saved. GitHub accepted it; the latest release is {latest.Value!.Tag}.");
+
+        // 404 is both "no release yet" and "this token can't see the repository"; asking for the repository tells them apart.
+        var access = await _releases.CanReadRepositoryAsync(ct).ConfigureAwait(false);
+        if (access is { IsSuccess: true, Value: true })
+            return Result<string>.Ok($"Saved. GitHub accepted it ({_options.Repository} has no published release yet).");
+        if (access is { IsSuccess: true, Value: false })
+        {
+            await RestoreTokenAsync(previous).ConfigureAwait(false);
+            return Result<string>.Fail($"Not saved: this token can't see {_options.Repository}. Give it read-only Contents access to that repository.");
+        }
+        if (access.Error!.Contains("rejected", StringComparison.Ordinal))
+        {
+            await RestoreTokenAsync(previous).ConfigureAwait(false);
+            return Result<string>.Fail("Not saved: " + access.Error + (previous is null ? "" : " The token saved before is still in place."));
+        }
+        return Result<string>.Ok($"Saved, though it couldn't be checked now: {access.Error}"); // offline: keep it
+    }
+
+    public Result<Unit> ClearToken() => GitHubToken.Clear(_options.TokenFile);
+
+    private async Task RestoreTokenAsync(string? previous)
+    {
+        if (previous is null) ClearToken();
+        else await GitHubToken.SaveAsync(_options.TokenFile, previous).ConfigureAwait(false);
+    }
+
+    // --- check, download, install ---
+
+    /// <summary>Asks GitHub for the latest release. Works from a source build too, to say what's out there.</summary>
+    public Task<Result<UpdateCheck>> CheckAsync(CancellationToken ct = default)
+    {
+        if (AssetKey is not { } key) return Task.FromResult(Result<UpdateCheck>.Fail(NotUpdatableReason!));
+        return new UpdateChecker(_releases, _clock).CheckAsync(CurrentVersion, key, ct);
+    }
+
+    /// <summary>
+    /// Downloads and verifies <paramref name="offer"/>: unpacked into a staging folder for a folder install, or just the
+    /// <c>.deb</c> for a package install. Returns what <see cref="InstallAsync"/> takes.
+    /// </summary>
+    public Task<Result<string>> DownloadAsync(UpdateOffer offer, IProgress<long>? progress = null, CancellationToken ct = default) =>
+        !CanUpdate ? Task.FromResult(Result<string>.Fail(NotUpdatableReason!))
+        : IsDebPackage ? UpdatePackage.DownloadVerifiedAsync(_releases, offer, _options.UpdatesDirectory, progress, ct)
+        : UpdatePackage.PrepareAsync(_releases, offer, _options.UpdatesDirectory, progress, ct);
+
+    /// <summary>
+    /// Stops the app's services, installs the download and starts them again. The caller (the desktop app, say) still
+    /// runs the old code until it restarts.
+    /// </summary>
+    public async Task<Result<UpdateInstallResult>> InstallAsync(UpdateOffer offer, string downloaded, CancellationToken ct = default)
+    {
+        if (!CanUpdate) return Result<UpdateInstallResult>.Fail(NotUpdatableReason!);
+        if (IsDebPackage) return await InstallDebAsync(offer, downloaded, ct).ConfigureAwait(false);
+        if (ReleaseStamp.Read(downloaded) is not { } stamp || !string.Equals(stamp.Rid, Rid, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(stamp.App, Stamp!.App, StringComparison.OrdinalIgnoreCase))
+            return Result<UpdateInstallResult>.Fail($"The download isn't a {_options.AppName} build for {Rid}; nothing was changed.");
+
+        var restart = await StopAsync(ct).ConfigureAwait(false);
+        var swapped = InstallSwap.Apply(downloaded, InstallDirectory, _clock.UtcNow);
+        if (swapped.IsSuccess && _options.WindowsSetupAppId is { } appId)
+            WindowsSetupEntry.SetVersion(appId, InstallDirectory, offer.Version.ToString());
+
+        // Whether or not the swap worked, what was running comes back (new files, or the restored old ones).
+        var warning = await RestartAsync(restart, ct).ConfigureAwait(false);
+        if (!swapped.IsSuccess) return Result<UpdateInstallResult>.Fail(swapped.Error!);
+
+        TryDelete(Path.GetDirectoryName(downloaded)!);
+        return Result<UpdateInstallResult>.Ok(new UpdateInstallResult(offer.Version, swapped.Value, DesktopExecutablePath,
+            restart is not null && warning is null, warning));
+    }
+
+    /// <summary>Removes what the last update moved aside. Safe to call on every start.</summary>
+    public void CleanUp()
+    {
+        if (Stamp is null) return;
+        InstallSwap.CleanUp(InstallDirectory);
+    }
+
+    private async Task<RestartServicesAsync?> StopAsync(CancellationToken ct) =>
+        _options.StopServices is { } stop ? await stop(InstallDirectory, ct).ConfigureAwait(false) : null;
+
+    private static async Task<string?> RestartAsync(RestartServicesAsync? restart, CancellationToken ct)
+    {
+        if (restart is null) return null;
+        var r = await restart(ct).ConfigureAwait(false);
+        return r.IsSuccess ? null : r.Error;
+    }
+
+    // --- Debian package ---
+
+    /// <summary>
+    /// Runs a command that may ask for a password, with this process's terminal (sudo prompts there) or none (pkexec
+    /// shows the desktop's own dialog). Returns the exit code; 127 when it couldn't be started. Replaced in tests.
+    /// </summary>
+    public Func<string, string[], int> RunElevated { get; set; } = DefaultRunElevated;
+
+    /// <summary>True when the caller has a terminal a sudo password prompt can use (a CLI), false for a desktop app.</summary>
+    public bool InteractiveTerminal { get; set; }
+
+    /// <summary>Whether sudo works without asking (a cached password, NOPASSWD, a CI runner). Replaced in tests.</summary>
+    public Func<bool> SudoWithoutPassword { get; set; } = () => DefaultRunQuiet("sudo", "-n", "true") == 0;
+
+    /// <summary>
+    /// How the <c>.deb</c> is installed: <c>sudo -n</c> when that needs no password; <c>sudo</c> at a terminal; otherwise
+    /// <c>pkexec</c>, which asks through the desktop's authentication dialog. apt-get (not dpkg) so new dependencies come too.
+    /// </summary>
+    public static (string File, string[] Args) DebInstallCommand(string deb, bool sudoWithoutPassword, bool terminal)
+    {
+        string[] apt = ["apt-get", "install", "-y", "--no-install-recommends", Path.GetFullPath(deb)];
+        return sudoWithoutPassword ? ("sudo", ["-n", .. apt])
+            : terminal ? ("sudo", apt)
+            : ("pkexec", apt);
+    }
+
+    private async Task<Result<UpdateInstallResult>> InstallDebAsync(UpdateOffer offer, string deb, CancellationToken ct)
+    {
+        if (!deb.EndsWith(".deb", StringComparison.OrdinalIgnoreCase) || !File.Exists(deb))
+            return Result<UpdateInstallResult>.Fail($"Expected a downloaded .deb, got {deb}; nothing was changed.");
+
+        var (file, args) = DebInstallCommand(deb, SudoWithoutPassword(), InteractiveTerminal);
+        var restart = await StopAsync(ct).ConfigureAwait(false);
+        var exit = await Task.Run(() => RunElevated(file, args), ct).ConfigureAwait(false);
+        var warning = await RestartAsync(restart, ct).ConfigureAwait(false);
+        if (exit != 0)
+        {
+            var why = exit switch
+            {
+                126 when file == "pkexec" => "The password prompt was cancelled.",
+                127 when file == "pkexec" => "Authentication failed, or pkexec isn't installed (sudo apt install pkexec).",
+                127 => $"{file} couldn't be started.",
+                _ => $"{file} apt-get install exited with {exit}.",
+            };
+            return Result<UpdateInstallResult>.Fail(
+                $"{why} {_options.AppName} {CurrentVersion} is still installed. Or install it yourself: sudo apt install {Path.GetFullPath(deb)}");
+        }
+
+        // The package replaced release.json too; make sure it is the version we meant.
+        if (ReleaseStamp.Read(InstallDirectory) is not { } now || now.Version != offer.Version.ToString())
+            return Result<UpdateInstallResult>.Fail($"apt-get finished, but {InstallDirectory} doesn't hold {_options.AppName} {offer.Version}.");
+        TryDelete(Path.GetDirectoryName(deb)!);
+        return Result<UpdateInstallResult>.Ok(new UpdateInstallResult(offer.Version, 1, DesktopExecutablePath,
+            restart is not null && warning is null, warning));
+    }
+
+    private static int DefaultRunElevated(string file, string[] args)
+    {
+        try
+        {
+            using var p = Process.Start(new ProcessStartInfo(file, args) { UseShellExecute = false });
+            if (p is null) return 127;
+            p.WaitForExit();
+            return p.ExitCode;
+        }
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            return 127;
+        }
+    }
+
+    private static int DefaultRunQuiet(string file, params string[] args)
+    {
+        try
+        {
+            using var p = Process.Start(new ProcessStartInfo(file, args)
+            {
+                UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true,
+            });
+            if (p is null) return 127;
+            p.StandardInput.Close();
+            _ = p.StandardOutput.ReadToEndAsync();
+            _ = p.StandardError.ReadToEndAsync();
+            if (!p.WaitForExit(TimeSpan.FromSeconds(5))) { try { p.Kill(); } catch (InvalidOperationException) { } return 124; }
+            return p.ExitCode;
+        }
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            return 127;
+        }
+    }
+
+    private static string EntryVersion()
+    {
+        var a = System.Reflection.Assembly.GetEntryAssembly();
+        var info = a is null ? null : System.Reflection.CustomAttributeExtensions
+            .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(a)?.InformationalVersion;
+        return info is { Length: > 0 } ? info.Split('+')[0] : a?.GetName().Version?.ToString(3) ?? "0.0.0";
+    }
+
+    private static void TryDelete(string directory)
+    {
+        try { if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+    }
+}
+
+/// <summary>Processes running from an install folder: for a <see cref="StopServicesAsync"/> to wait on and, at a deadline, stop.</summary>
+public static class InstalledProcesses
+{
+    /// <summary>Running processes named <paramref name="name"/> (no <c>.exe</c>) whose executable is in <paramref name="directory"/>.</summary>
+    public static List<Process> Find(string name, string directory)
+    {
+        var dir = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar);
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var mine = new List<Process>();
+        foreach (var p in Process.GetProcessesByName(name))
+        {
+            string? path = null;
+            try { path = p.MainModule?.FileName; }
+            catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException) { }
+            if (path is not null && string.Equals(Path.GetDirectoryName(Path.GetFullPath(path)), dir, comparison)) mine.Add(p);
+            else p.Dispose();
+        }
+        return mine;
+    }
+
+    /// <summary>Waits for them to exit, killing what is left at the deadline. True if there were any.</summary>
+    public static async Task<bool> WaitForExitAsync(string name, string directory, TimeSpan timeout, CancellationToken ct = default)
+    {
+        var any = false;
+        var deadline = DateTime.UtcNow + timeout;
+        while (true)
+        {
+            var running = Find(name, directory);
+            if (running.Count == 0) return any;
+            any = true;
+            if (DateTime.UtcNow >= deadline)
+            {
+                foreach (var p in running)
+                {
+                    try { p.Kill(entireProcessTree: true); p.WaitForExit(5000); }
+                    catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception) { }
+                    finally { p.Dispose(); }
+                }
+                return true;
+            }
+            foreach (var p in running) p.Dispose();
+            await Task.Delay(250, ct).ConfigureAwait(false);
+        }
+    }
+}

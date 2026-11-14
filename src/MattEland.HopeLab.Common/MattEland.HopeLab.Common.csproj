@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsAotCompatible>true</IsAotCompatible>
+    <Description>Small building blocks shared by the HopeLab apps: Result&lt;T&gt; and Unit, a clock abstraction, and atomic file writes.</Description>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MattEland.HopeLab.Common/MattEland.HopeLab.Common.csproj" />
+    <Project Path="src/MattEland.HopeLab.Git/MattEland.HopeLab.Git.csproj" />
+    <Project Path="src/MattEland.HopeLab.Updates/MattEland.HopeLab.Updates.csproj" />
+    <Project Path="src/MattEland.HopeLab.Updates.ReactiveUI/MattEland.HopeLab.Updates.ReactiveUI.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MattEland.HopeLab.Tests/MattEland.HopeLab.Tests.csproj" />
+  </Folder>
+</Solution>

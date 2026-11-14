@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/QuantumHope/MattEland.HopeLab.Shared/main/installers/hopelab-app.schema.json",
+  "title": "HopeLab app release config",
+  "description": "hopelab-app.json at an app repository's root: what the shared release workflow builds and what the installers do. The \"install\" part is copied into every release's latest.json, so install.ps1 and install.sh need only the repository.",
+  "type": "object",
+  "required": ["name", "id", "desktop", "install"],
+  "properties": {
+    "name": { "type": "string", "description": "Display name, Windows install folder and Start menu entry: OneRing." },
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "description": "Lower-case id: Debian package, /opt/<id>, ~/.local/share/<id>, <id>.desktop." },
+    "description": { "type": "string", "description": "One line for the menu entry, Apps & features and the package." },
+    "publisher": { "type": "string" },
+    "desktop": {
+      "type": "object",
+      "required": ["project", "executable"],
+      "properties": {
+        "project": { "type": "string", "description": "The project published as the app (self-contained), relative to the repository." },
+        "executable": { "type": "string", "description": "Its executable, without .exe: OneRing." },
+        "icon": { "type": "string", "description": "A .ico in the repository, for setup.exe." },
+        "png": { "type": "string", "description": "A 256 px PNG in the repository, for the Linux menu entry." }
+      }
+    },
+    "aotProjects": { "type": "array", "items": { "type": "string" }, "description": "Projects published over the top with NativeAOT (OneRing's ring CLI)." },
+    "versionFile": { "type": "string", "description": "Where <Version>major.minor.x</Version> lives. Default Directory.Build.props." },
+    "test": {
+      "type": "object",
+      "properties": {
+        "solution": { "type": "string" },
+        "arguments": { "type": "string", "description": "Extra dotnet test arguments, e.g. a --filter that skips a known hang." }
+      }
+    },
+    "linux": {
+      "type": "object",
+      "properties": {
+        "depends": { "type": "string", "description": "Debian Depends beyond the .NET runtime's own (ICU, OpenSSL, zlib, fontconfig)." },
+        "recommends": { "type": "string" },
+        "categories": { "type": "string", "description": "Desktop entry Categories. Default Utility;" }
+      }
+    },
+    "windows": {
+      "type": "object",
+      "properties": {
+        "setupAppId": { "type": "string", "description": "Inno Setup AppId, a {GUID}. Never change it once released." }
+      }
+    },
+    "install": {
+      "type": "object",
+      "description": "Copied into latest.json for the installers.",
+      "properties": {
+        "commands": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Commands on PATH (Linux links): name -> executable in the app folder." },
+        "addToPath": { "type": "boolean", "description": "Windows: put the app folder on the user PATH (for its CLI)." },
+        "dataDirectory": { "type": "string", "description": "The per-user data folder under the home folder, e.g. .onering; a saved GitHub token goes in github-token there." },
+        "dataDirectoryVariable": { "type": "string", "description": "An environment variable that overrides it (ONERING_HOME)." },
+        "tokenVariable": { "type": "string", "description": "An app-specific GitHub token variable, checked before GH_TOKEN." },
+        "processes": { "type": "array", "items": { "type": "string" }, "description": "Executables (no .exe) stopped before files are replaced." },
+        "stop": { "type": "array", "items": { "type": "string" }, "description": "A clean stop to try first: an executable in the app folder and its arguments." },
+        "beforeUninstall": { "type": "array", "items": { "type": "string" }, "description": "Run before removing the app (OneRing removes its login entry)." },
+        "systemdUserUnit": { "type": "string", "description": "A systemd --user unit to stop before and start after an update." },
+        "versionCommand": { "type": "array", "items": { "type": "string" }, "description": "Prints the version (the release smoke test checks it): [\"ring\", \"--version\"]." },
+        "updateCommand": { "type": "array", "items": { "type": "string" }, "description": "Updates non-interactively from a terminal, for the smoke test: [\"ring\", \"update\", \"--yes\"]." },
+        "firstRun": { "type": "string", "description": "A sentence the installers print about the first launch." },
+        "uninstallNote": { "type": "string", "description": "A sentence the installers print after uninstalling." }
+      }
+    }
+  }
+}

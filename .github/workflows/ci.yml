@@ -1,0 +1,109 @@
+# Build and test every pull request and push. Every push to main that passes also publishes the packages to nuget.org
+# as MattEland.HopeLab.*.<major>.<minor>.<commits on main> (needs the NUGET_API_KEY secret).
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  test:
+    name: Build and test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Git identity for the tests' temporary repositories
+        run: |
+          git config --global user.name "HopeLab CI"
+          git config --global user.email "ci@hopelab.invalid"
+          git config --global init.defaultBranch main
+      - run: dotnet build MattEland.HopeLab.Shared.slnx -c Release
+      - run: dotnet test MattEland.HopeLab.Shared.slnx -c Release --no-build --blame-hang-timeout 5m
+
+  installers:
+    name: Installers and release helper
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell scripts parse
+        run: |
+          bash -n installers/install.sh
+          bash -n installers/linux/build-deb.sh
+          shellcheck -S error installers/install.sh installers/linux/build-deb.sh
+      - name: install.ps1 parses
+        shell: pwsh
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("$PWD/installers/install.ps1", [ref]$null, [ref]$errors) | Out-Null
+          if ($errors) { $errors | ForEach-Object { Write-Host "::error::$($_.Extent.StartLineNumber): $($_.Message)" }; exit 1 }
+      - name: Release helper and .deb builder, on the example app
+        run: |
+          cfg=installers/examples/hopelab-app.json
+          python3 installers/release/hopelab_release.py env "$cfg"
+          v=$(python3 installers/release/hopelab_release.py version "$cfg" 42); echo "version $v"; [ "$v" = "0.1.42" ]
+          pub=$(mktemp -d); mkdir -p "$pub"
+          printf '#!/bin/sh\necho demo\n' > "$pub/Demo"; chmod +x "$pub/Demo"; cp "$pub/Demo" "$pub/demo-cli"
+          python3 installers/release/hopelab_release.py stamp "$cfg" 0.1.42 linux-x64 o/r abc "$pub"
+          grep -q '"executable": "Demo"' "$pub/hopelab-install.json"
+          bash installers/linux/build-deb.sh "$pub" 0.1.42 dist "$cfg"
+          dpkg-deb --contents dist/demo_0.1.42_amd64.deb | grep -q './opt/demo/Demo'
+          dpkg-deb --contents dist/demo_0.1.42_amd64.deb | grep -q './usr/bin/demo-cli -> /opt/demo/demo-cli'
+          sudo apt-get install -y ./dist/demo_0.1.42_amd64.deb
+          grep -q '"package": "deb"' /opt/demo/release.json
+          demo-cli
+          sudo apt-get remove -y demo
+          touch "dist/Demo-0.1.42-win-x64.zip" "dist/Demo-0.1.42-linux-x64.tar.gz"
+          python3 installers/release/hopelab_release.py manifest "$cfg" 0.1.42 v0.1.42 abc dist
+          python3 -c 'import json; m=json.load(open("dist/latest.json")); assert set(m["assets"])=={"win-x64","linux-x64","linux-x64.deb"}, m; assert m["install"]["executable"]=="Demo"'
+          python3 installers/release/hopelab_release.py installers "$cfg" o/r . dist
+          grep -q 'REPO="o/r"' dist/install.sh
+          grep -q "BakedRepo = 'o/r'" dist/install.ps1
+
+  publish:
+    needs: [test, installers]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Pack
+        run: |
+          base=$(sed -n 's:.*<Version>\([0-9]*\.[0-9]*\)\.[0-9]*</Version>.*:\1:p' Directory.Build.props)
+          version="$base.$(git rev-list --count HEAD)"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          dotnet pack MattEland.HopeLab.Shared.slnx -c Release -p:Version="$version" -o artifacts
+          ls artifacts
+      - name: Push to nuget.org
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          if [ -z "$NUGET_API_KEY" ]; then
+            echo "::warning::No NUGET_API_KEY secret: packages built but not published."
+            exit 0
+          fi
+          dotnet nuget push "artifacts/*.nupkg" --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
+          echo "Published MattEland.HopeLab.* $VERSION to nuget.org" >> "$GITHUB_STEP_SUMMARY"

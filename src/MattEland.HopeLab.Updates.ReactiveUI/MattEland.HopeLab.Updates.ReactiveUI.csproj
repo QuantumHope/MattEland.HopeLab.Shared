@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>The update view model the HopeLab desktop apps share (ReactiveUI, no UI framework): check timer, banner, tray text, Settings status and GitHub-token handling. Each app keeps its own themed views.</Description>
+    <PackageTags>$(PackageTags);updates;reactiveui</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MattEland.HopeLab.Updates\MattEland.HopeLab.Updates.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="ReactiveUI" />
+    <PackageReference Include="System.Reactive" />
+  </ItemGroup>
+</Project>

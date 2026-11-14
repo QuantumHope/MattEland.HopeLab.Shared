@@ -1,0 +1,18 @@
+{
+  "$schema": "../hopelab-app.schema.json",
+  "name": "Demo",
+  "id": "demo",
+  "description": "A made-up app the shared repository's CI packages, to test the installers",
+  "publisher": "QuantumHope",
+  "desktop": { "project": "src/Demo", "executable": "Demo" },
+  "linux": { "categories": "Utility;" },
+  "windows": { "setupAppId": "{00000000-0000-4000-8000-000000000000}" },
+  "install": {
+    "commands": { "demo-cli": "demo-cli" },
+    "addToPath": true,
+    "dataDirectory": ".demo",
+    "processes": ["Demo"],
+    "firstRun": "It says hello.",
+    "uninstallNote": "Nothing \"else\" to remove."
+  }
+}
