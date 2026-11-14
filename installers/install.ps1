@@ -238,17 +238,36 @@ try {
     $was = Stop-App $(if ($previous) { $previous } else { $settings })
     New-Item -ItemType Directory -Force (Split-Path $InstallDir -Parent) | Out-Null
     $old = "$InstallDir.old-" + (Get-Date -Format 'yyyyMMddHHmmss')
+    # What was stopped comes back if anything below fails, from whichever copy is in place by then.
+    function Start-Previous {
+        foreach ($p in $was.Running) {
+            $exe = Join-Path $InstallDir "$p.exe"
+            if (Test-Path $exe) { Start-Process $exe -WorkingDirectory $InstallDir -WindowStyle Hidden }
+        }
+    }
     for ($try = 1; ; $try++) {
         try {
             # A short-lived CLI run (a Claude Code hook, say) can hold a file for a moment; try again shortly.
             if (Test-Path $InstallDir) { Rename-Item $InstallDir $old }
             break
         } catch {
-            if ($try -ge 10) { throw "Couldn't move the old $Name aside ($($_.Exception.Message)). Close $Name and try again." }
+            if ($try -ge 10) {
+                Start-Previous
+                throw "Couldn't move the old $Name aside ($($_.Exception.Message)). Close $Name and try again."
+            }
             Start-Sleep -Milliseconds 500
         }
     }
-    Move-Item $staged $InstallDir
+    try {
+        Move-Item $staged $InstallDir
+    } catch {
+        # Roll back: drop whatever part of the new copy arrived, and put the old one back where everything expects it.
+        $why = $_.Exception.Message
+        if (Test-Path $InstallDir) { Remove-Item $InstallDir -Recurse -Force -ErrorAction SilentlyContinue }
+        if (Test-Path $old) { Rename-Item $old (Split-Path $InstallDir -Leaf) }
+        Start-Previous
+        throw "Couldn't put the new $Name in place ($why). The previous version is back as it was."
+    }
     Remove-Item $old -Recurse -Force -ErrorAction SilentlyContinue
 
     # ---- shortcut and PATH ----

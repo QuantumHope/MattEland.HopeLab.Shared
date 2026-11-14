@@ -47,24 +47,38 @@ public static class GitHubToken
     }
 
     /// <summary>
-    /// Saves a token for this machine, readable only by this user (mode 600 on Linux and macOS; the profile folder's
-    /// own permissions on Windows). Nothing else in the app writes or logs it.
+    /// Saves a token for this machine, readable only by this user: on Linux and macOS the temporary file is created with
+    /// mode 600 before any of the token is written, then renamed over the old one, so no other user can read it at any
+    /// point; on Windows the profile folder's own permissions do the same. Nothing else in the app writes or logs it.
     /// </summary>
     public static async Task<Result<Unit>> SaveAsync(string tokenFile, string token)
     {
         var t = token.Trim();
-        if (t.Length == 0 || t.Any(char.IsWhiteSpace)) return Result<Unit>.Fail("That doesn't look like a GitHub token.");
+        if (!LooksLikeToken(t)) return Result<Unit>.Fail("That doesn't look like a GitHub token.");
+        var dir = Path.GetDirectoryName(Path.GetFullPath(tokenFile))!;
+        var temp = Path.Combine(dir, $".{Path.GetFileName(tokenFile)}.{Guid.NewGuid():N}.tmp");
         try
         {
-            await AtomicFile.WriteAllTextAsync(tokenFile, t + "\n").ConfigureAwait(false);
-            AtomicFile.RestrictToUser(tokenFile);
+            Directory.CreateDirectory(dir);
+            var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None };
+            if (!OperatingSystem.IsWindows()) options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+            await using (var stream = new FileStream(temp, options))
+            await using (var writer = new StreamWriter(stream))
+                await writer.WriteAsync(t + "\n").ConfigureAwait(false);
+            File.Move(temp, tokenFile, overwrite: true);
             return Result<Unit>.Ok(Unit.Value);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             return Result<Unit>.Fail($"Couldn't save the token to {tokenFile}: {e.Message}");
         }
+        finally
+        {
+            try { if (File.Exists(temp)) File.Delete(temp); } catch (IOException) { }
+        }
     }
+
+    internal static bool LooksLikeToken(string t) => t.Length > 0 && !t.Any(char.IsWhiteSpace);
 
     public static Result<Unit> Clear(string tokenFile)
     {

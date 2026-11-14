@@ -90,22 +90,40 @@ PY
 )"
 }
 
+# ---- the app's processes, by the executable they really run ----
+# A command line can be the install path, a ~/.local/bin symlink or a relative path; /proc/<pid>/exe is always the real
+# file, so that is what identifies a process as this install's.
+app_pids() { # app_pids <executable name>
+  [ -d "$APP" ] || return 0
+  local target pid exe
+  target="$(readlink -f "$APP")/$1"
+  for pid in /proc/[0-9]*; do
+    exe="$(readlink "$pid/exe" 2>/dev/null)" || continue
+    [ "$exe" = "$target" ] && echo "${pid#/proc/}"
+  done
+  return 0
+}
+
 # ---- stop what runs from the install folder, and remember what to bring back ----
 via_systemd=0
 was_running=""
+app_was_running=0
 stop_app() {
   if [ -n "$UNIT" ] && command -v systemctl >/dev/null 2>&1 && systemctl --user is-active --quiet "$UNIT" 2>/dev/null; then
     via_systemd=1
     systemctl --user stop "$UNIT" || true
   fi
-  local p
+  # The app itself keeps running its old files until it is reopened (Linux frees them then); just remember it.
+  [ -n "$(app_pids "$EXE")" ] && app_was_running=1
+  local p pids
   for p in $PROCESSES; do
-    if pgrep -f "^$APP/$p( |$)" >/dev/null 2>&1; then
-      [ "$p" = "$EXE" ] || was_running="$was_running $p"
-      if [ -n "$STOP" ]; then (cd "$APP" && eval "./$STOP" >/dev/null 2>&1) || true; STOP=""; fi   # a clean stop, once
-      for _ in 1 2 3 4 5 6 7 8 9 10; do pgrep -f "^$APP/$p( |$)" >/dev/null 2>&1 || break; sleep 0.5; done
-      [ "$p" = "$EXE" ] || pkill -f "^$APP/$p( |$)" 2>/dev/null || true
-    fi
+    [ "$p" = "$EXE" ] && continue
+    [ -n "$(app_pids "$p")" ] || continue
+    was_running="$was_running $p"
+    if [ -n "$STOP" ]; then (cd "$APP" && eval "./$STOP" >/dev/null 2>&1) || true; STOP=""; fi   # a clean stop, once
+    for _ in 1 2 3 4 5 6 7 8 9 10; do [ -z "$(app_pids "$p")" ] && break; sleep 0.5; done
+    pids="$(app_pids "$p")"
+    [ -n "$pids" ] && kill $pids 2>/dev/null || true
   done
 }
 
@@ -114,7 +132,7 @@ if [ "$UNINSTALL" = 1 ]; then
   say "Removing $NAME from $APP"
   if [ -n "$BEFORE_UNINSTALL" ]; then (cd "$APP" && eval "./$BEFORE_UNINSTALL" >/dev/null 2>&1) || true; fi
   stop_app
-  pkill -f "^$APP/$EXE( |$)" 2>/dev/null || true
+  pids="$(app_pids "$EXE")"; [ -n "$pids" ] && kill $pids 2>/dev/null || true
   while read -r cmd _; do [ -n "$cmd" ] && rm -f "$BIN/$cmd"; done <<< "$COMMANDS"
   rm -f "$DESKTOP_FILE"
   rm -rf "$APP"
@@ -235,13 +253,16 @@ fi
 if [ "$installed_before" = 1 ]; then say "Updated $NAME to $ver in $APP"; else say "Installed $NAME $ver in $APP"; fi
 if [ -n "$token" ] && [ "$SAVE_TOKEN" = 1 ] && [ -n "$DATA_DIR" ] && { [ "$token_from" = prompt ] || [ "$token_from" = environment ]; }; then
   mkdir -p "$DATA_DIR"
-  (umask 077; printf '%s\n' "$token" > "$DATA_DIR/github-token")
+  # mktemp creates the file 0600 before the token is written; the rename then replaces any older (looser) file.
+  tmp="$(mktemp "$DATA_DIR/.github-token.XXXXXX")"
+  printf '%s\n' "$token" > "$tmp"
+  mv -f "$tmp" "$DATA_DIR/github-token"
   echo "Saved the GitHub token to $DATA_DIR/github-token (readable only by you) so $NAME can update itself."
 fi
 if [ -n "$COMMANDS" ]; then
   case ":$PATH:" in *":$BIN:"*) ;; *) echo "Add $BIN to your PATH to use $NAME's commands in a terminal (Pop!_OS adds it at your next login)." ;; esac
 fi
-if pgrep -f "^$APP/$EXE( |$)" >/dev/null 2>&1; then
+if [ "$app_was_running" = 1 ]; then
   echo "$NAME is open: quit it and open it again to run $ver."
 elif [ "$LAUNCH" = 1 ] && [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
   echo "Opening $NAME.${FIRST_RUN:+ $FIRST_RUN}"

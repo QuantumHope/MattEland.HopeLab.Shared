@@ -21,6 +21,14 @@ public sealed class FakeUpdates : IUpdateService
     public int Checks { get; private set; }
     public string AccessSource { get; set; } = "gh sign-in";
     public List<string> SavedTokens { get; } = [];
+    public bool HasSavedToken => SavedTokens.Count > 0;
+    public int AccessRefreshes { get; private set; }
+
+    public Task RefreshAccessAsync()
+    {
+        AccessRefreshes++;
+        return Task.CompletedTask;
+    }
 
     public static UpdateOffer Offer(string version = "0.1.41") => new(ReleaseVersion.Parse(version), ReleaseVersion.Parse("0.1.40"),
         $"v{version}", $"https://github.com/o/r/releases/tag/v{version}", "notes", Now, "win-x64",
@@ -54,6 +62,7 @@ public sealed class FakeUpdates : IUpdateService
     public Result<Unit> ClearToken()
     {
         AccessSource = "none";
+        SavedTokens.Clear();
         return Result<Unit>.Ok(Unit.Value);
     }
 }

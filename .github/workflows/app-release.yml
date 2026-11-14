@@ -173,9 +173,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    concurrency:
-      group: release-${{ github.repository }}
-      cancel-in-progress: false
     env:
       VERSION: ${{ needs.version.outputs.version }}
       TAG: ${{ needs.version.outputs.tag }}
@@ -216,16 +213,30 @@ jobs:
             echo "- Already installed: $APP_NAME updates itself (Settings → Updates)."
           } > notes.md
           ls -l dist
-      - name: Create the release as a draft
-        run: gh release create "$TAG" dist/* --draft --title "$APP_NAME $VERSION" --notes-file notes.md --target "$GITHUB_SHA"
+      # A re-run after a failure finds its own draft and finishes it; a release that is already published is left alone.
+      - name: Create the release as a draft (or resume this tag's draft)
+        id: draft
+        run: |
+          state=$(gh release view "$TAG" --json isDraft --jq 'if .isDraft then "draft" else "published" end' 2>/dev/null || echo none)
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+          case "$state" in
+            none) gh release create "$TAG" dist/* --draft --title "$APP_NAME $VERSION" --notes-file notes.md --target "$GITHUB_SHA" ;;
+            draft) gh release upload "$TAG" dist/* --clobber && gh release edit "$TAG" --notes-file notes.md ;;
+            published) echo "$TAG is already published; nothing to do." ;;
+          esac
       - name: Check its assets, then publish
+        if: steps.draft.outputs.state != 'published'
         run: |
           names=$(gh release view "$TAG" --json assets --jq '.assets[].name')
           for want in latest.json install.sh install.ps1 "$APP_NAME-$VERSION-win-x64.zip" "$APP_NAME-$VERSION-linux-x64.tar.gz" \
                       "$APP_NAME-$VERSION-win-x64-setup.exe" "${APP_ID}_${VERSION}_amd64.deb"; do
             echo "$names" | grep -qx "$want" || { echo "::error::$TAG is missing $want"; exit 1; }
           done
-          gh release edit "$TAG" --draft=false --latest
+          gh release edit "$TAG" --draft=false --latest=false
+          # Runs aren't serialised (a concurrency group would drop queued main pushes), so two can finish out of order:
+          # only the highest published version is marked Latest, which an older run can never take back.
+          highest=$(gh release list --exclude-drafts -L 100 --json tagName --jq '.[].tagName' | grep '^v' | sort -V | tail -n1)
+          [ "$highest" = "$TAG" ] && gh release edit "$TAG" --latest
           echo "Published [$TAG]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$TAG)" >> "$GITHUB_STEP_SUMMARY"
 
   # Each installer on a fresh runner, as a new machine would use it; then, where the previous release has the same

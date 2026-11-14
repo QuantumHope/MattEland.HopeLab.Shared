@@ -64,19 +64,22 @@ public sealed class GitHubReleases
     }
 
     /// <summary>
-    /// Whether the token can see the repository at all (GitHub answers 404 for both "no release yet" and "can't see it",
-    /// so this tells them apart). Ok(false) is "can't see it"; a failure is GitHub being unreachable or the token rejected.
+    /// Whether the token can read the repository's releases. <see cref="LatestAsync"/> answers 404 both for "no release
+    /// yet" and for "this token can't read releases", and a token that can see the repository (Metadata) may still lack
+    /// Contents; listing releases needs exactly what downloading does, and answers 200 with an empty list when there are
+    /// none. Ok(false) is "can't read them"; a failure is GitHub being unreachable or the token rejected.
     /// </summary>
-    public async Task<Result<bool>> CanReadRepositoryAsync(CancellationToken ct = default)
+    public async Task<Result<bool>> CanReadReleasesAsync(CancellationToken ct = default)
     {
         var token = _token();
-        using var request = Request(HttpMethod.Get, $"https://api.github.com/repos/{_repository}", token);
+        using var request = Request(HttpMethod.Get, $"https://api.github.com/repos/{_repository}/releases?per_page=1", token);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
         try
         {
             using var response = await _http.SendAsync(request, ct).ConfigureAwait(false);
             if (response.IsSuccessStatusCode) return Result<bool>.Ok(true);
-            if (response.StatusCode == HttpStatusCode.NotFound) return Result<bool>.Ok(false);
+            // 404 (a private repository this token can't see) and 403 (it can, without Contents): no releases for this token.
+            if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Forbidden) return Result<bool>.Ok(false);
             return Result<bool>.Fail(Explain(response.StatusCode, token is not null));
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)

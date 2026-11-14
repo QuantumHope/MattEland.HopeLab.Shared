@@ -35,6 +35,9 @@ public sealed record AppUpdateOptions(string AppName, string Repository, string 
 
     public StopServicesAsync? StopServices { get; init; }
 
+    /// <summary>The GitHub CLI's sign-in, as a last resort for a token. Defaults to running <c>gh</c>; tests replace it.</summary>
+    public Func<string?>? GitHubCliToken { get; init; }
+
     public string TokenFile => Path.Combine(DataDirectory, "github-token");
     public string UpdatesDirectory => Path.Combine(DataDirectory, "updates");
 }
@@ -62,17 +65,22 @@ public sealed class AppUpdater
 
     private readonly AppUpdateOptions _options;
     private readonly IClock _clock;
+    private readonly HttpClient _http;
     private readonly GitHubReleases _releases;
 
-    public AppUpdater(AppUpdateOptions options, IClock clock, GitHubReleases? releases = null)
+    /// <param name="http">For tests; defaults to a shared client.</param>
+    public AppUpdater(AppUpdateOptions options, IClock clock, HttpClient? http = null)
     {
         _options = options;
         _clock = clock;
+        _http = http ?? SharedHttp;
         InstallDirectory = Path.GetFullPath(options.InstallDirectory ?? OwnDirectory);
         Stamp = ReleaseStamp.Read(InstallDirectory);
-        _releases = releases ?? new GitHubReleases(SharedHttp, options.Repository, () => FindToken().Token,
-            $"{options.AppName.Replace(' ', '-')}/{CurrentVersion}");
+        _releases = Releases(() => FindToken().Token);
     }
+
+    private GitHubReleases Releases(Func<string?> token) =>
+        new(_http, _options.Repository, token, $"{_options.AppName.Replace(' ', '-')}/{CurrentVersion}");
 
     /// <summary>The folder of the running executable (not the working directory).</summary>
     public static string OwnDirectory =>
@@ -109,45 +117,47 @@ public sealed class AppUpdater
 
     // --- GitHub access ---
 
-    /// <summary>The token requests would use, and where it comes from.</summary>
-    public GitHubTokenFound FindToken() => GitHubToken.Find(_options.TokenVariable, tokenFile: _options.TokenFile);
+    /// <summary>
+    /// The token requests would use, and where it comes from. This may run the GitHub CLI (up to a few seconds), so a UI
+    /// calls it off the UI thread (<see cref="AppUpdateService"/> does).
+    /// </summary>
+    public GitHubTokenFound FindToken() => GitHubToken.Find(_options.TokenVariable, _options.GitHubCliToken, _options.TokenFile);
 
-    /// <summary>Saves a token for this machine, then checks GitHub accepts it. The message says what GitHub made of it.</summary>
+    /// <summary>Whether a token is saved on this machine, whichever source is used first.</summary>
+    public bool HasSavedToken => GitHubToken.ReadSaved(_options.TokenFile) is not null;
+
+    /// <summary>
+    /// Checks the token itself against GitHub (not whatever token currently takes precedence), and saves it only if it
+    /// can read the repository's releases. A refused token never replaces a saved one. The message says what GitHub
+    /// made of it.
+    /// </summary>
     public async Task<Result<string>> SaveTokenAsync(string token, CancellationToken ct = default)
     {
-        var previous = GitHubToken.ReadSaved(_options.TokenFile); // put back if the new one is refused
-        var saved = await GitHubToken.SaveAsync(_options.TokenFile, token).ConfigureAwait(false);
+        var candidate = token.Trim();
+        if (!GitHubToken.LooksLikeToken(candidate)) return Result<string>.Fail("That doesn't look like a GitHub token.");
+        var probe = Releases(() => candidate);
+
+        string message;
+        var latest = await probe.LatestAsync(ct).ConfigureAwait(false);
+        if (latest.IsSuccess) message = $"GitHub accepted it; the latest release is {latest.Value!.Tag}.";
+        else
+        {
+            // Latest answers 404 both for "no release yet" and "can't read releases"; listing them tells the two apart.
+            var access = await probe.CanReadReleasesAsync(ct).ConfigureAwait(false);
+            if (access is { IsSuccess: true, Value: true }) message = $"GitHub accepted it ({_options.Repository} has no published release yet).";
+            else if (access is { IsSuccess: true, Value: false })
+                return Result<string>.Fail($"Not saved: this token can't read {_options.Repository}'s releases. Give it read-only Contents access to that repository.");
+            else if (access.Error!.Contains("rejected", StringComparison.Ordinal)) return Result<string>.Fail("Not saved: " + access.Error);
+            else message = $"It couldn't be checked now ({access.Error}), so it was saved as it is."; // offline: keep it
+        }
+
+        var saved = await GitHubToken.SaveAsync(_options.TokenFile, candidate).ConfigureAwait(false);
         if (!saved.IsSuccess) return Result<string>.Fail(saved.Error!);
-        if (FindToken() is { Source: not "saved token" } other)
-            return Result<string>.Ok($"Saved. {other.Source} is set too and is used first, though.");
-
-        var latest = await _releases.LatestAsync(ct).ConfigureAwait(false);
-        if (latest.IsSuccess) return Result<string>.Ok($"Saved. GitHub accepted it; the latest release is {latest.Value!.Tag}.");
-
-        // 404 is both "no release yet" and "this token can't see the repository"; asking for the repository tells them apart.
-        var access = await _releases.CanReadRepositoryAsync(ct).ConfigureAwait(false);
-        if (access is { IsSuccess: true, Value: true })
-            return Result<string>.Ok($"Saved. GitHub accepted it ({_options.Repository} has no published release yet).");
-        if (access is { IsSuccess: true, Value: false })
-        {
-            await RestoreTokenAsync(previous).ConfigureAwait(false);
-            return Result<string>.Fail($"Not saved: this token can't see {_options.Repository}. Give it read-only Contents access to that repository.");
-        }
-        if (access.Error!.Contains("rejected", StringComparison.Ordinal))
-        {
-            await RestoreTokenAsync(previous).ConfigureAwait(false);
-            return Result<string>.Fail("Not saved: " + access.Error + (previous is null ? "" : " The token saved before is still in place."));
-        }
-        return Result<string>.Ok($"Saved, though it couldn't be checked now: {access.Error}"); // offline: keep it
+        var first = await Task.Run(FindToken, ct).ConfigureAwait(false);
+        return Result<string>.Ok($"Saved. {message}" + (first.Source == "saved token" ? "" : $" {first.Source} is set too and is used first, though."));
     }
 
     public Result<Unit> ClearToken() => GitHubToken.Clear(_options.TokenFile);
-
-    private async Task RestoreTokenAsync(string? previous)
-    {
-        if (previous is null) ClearToken();
-        else await GitHubToken.SaveAsync(_options.TokenFile, previous).ConfigureAwait(false);
-    }
 
     // --- check, download, install ---
 
@@ -168,24 +178,58 @@ public sealed class AppUpdater
         : UpdatePackage.PrepareAsync(_releases, offer, _options.UpdatesDirectory, progress, ct);
 
     /// <summary>
+    /// Downloads, verifies and installs <paramref name="offer"/> while holding <see cref="TryLock"/>, so two processes (the
+    /// app and its CLI, say) never update the same copy, or use the same download folder, at once. The way an app should
+    /// update.
+    /// </summary>
+    public async Task<Result<UpdateInstallResult>> UpdateAsync(UpdateOffer offer, IProgress<long>? progress = null, CancellationToken ct = default)
+    {
+        using var held = TryLock();
+        if (held is null)
+            return Result<UpdateInstallResult>.Fail($"Another {_options.AppName} update is already running on this machine. Try again when it has finished.");
+        var downloaded = await DownloadAsync(offer, progress, ct).ConfigureAwait(false);
+        if (!downloaded.IsSuccess) return Result<UpdateInstallResult>.Fail(downloaded.Error!);
+        return await InstallAsync(offer, downloaded.Value!, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The machine-wide update lock (a file in the updates folder, held open exclusively). Null when another process
+    /// holds it. <see cref="UpdateAsync"/> takes it; callers of <see cref="DownloadAsync"/> and <see cref="InstallAsync"/>
+    /// should too.
+    /// </summary>
+    public IDisposable? TryLock()
+    {
+        try
+        {
+            Directory.CreateDirectory(_options.UpdatesDirectory);
+            return new FileStream(Path.Combine(_options.UpdatesDirectory, "update.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite,
+                FileShare.None, 1, FileOptions.DeleteOnClose);
+        }
+        catch (IOException) { return null; }
+        catch (UnauthorizedAccessException) { return null; }
+    }
+
+    /// <summary>
     /// Stops the app's services, installs the download and starts them again. The caller (the desktop app, say) still
-    /// runs the old code until it restarts.
+    /// runs the old code until it restarts. Cancellation is honoured only before anything is stopped: from then on the
+    /// install runs to the end, so whatever was stopped is always started again.
     /// </summary>
     public async Task<Result<UpdateInstallResult>> InstallAsync(UpdateOffer offer, string downloaded, CancellationToken ct = default)
     {
         if (!CanUpdate) return Result<UpdateInstallResult>.Fail(NotUpdatableReason!);
-        if (IsDebPackage) return await InstallDebAsync(offer, downloaded, ct).ConfigureAwait(false);
+        if (ct.IsCancellationRequested) return Result<UpdateInstallResult>.Fail("Cancelled; nothing was changed.");
+        if (IsDebPackage) return await InstallDebAsync(offer, downloaded).ConfigureAwait(false);
         if (ReleaseStamp.Read(downloaded) is not { } stamp || !string.Equals(stamp.Rid, Rid, StringComparison.OrdinalIgnoreCase)
             || !string.Equals(stamp.App, Stamp!.App, StringComparison.OrdinalIgnoreCase))
             return Result<UpdateInstallResult>.Fail($"The download isn't a {_options.AppName} build for {Rid}; nothing was changed.");
 
-        var restart = await StopAsync(ct).ConfigureAwait(false);
+        var restart = await StopAsync(CancellationToken.None).ConfigureAwait(false);
         var swapped = InstallSwap.Apply(downloaded, InstallDirectory, _clock.UtcNow);
         if (swapped.IsSuccess && _options.WindowsSetupAppId is { } appId)
             WindowsSetupEntry.SetVersion(appId, InstallDirectory, offer.Version.ToString());
 
         // Whether or not the swap worked, what was running comes back (new files, or the restored old ones).
-        var warning = await RestartAsync(restart, ct).ConfigureAwait(false);
+        var warning = await RestartAsync(restart, CancellationToken.None).ConfigureAwait(false);
         if (!swapped.IsSuccess) return Result<UpdateInstallResult>.Fail(swapped.Error!);
 
         TryDelete(Path.GetDirectoryName(downloaded)!);
@@ -236,15 +280,16 @@ public sealed class AppUpdater
             : ("pkexec", apt);
     }
 
-    private async Task<Result<UpdateInstallResult>> InstallDebAsync(UpdateOffer offer, string deb, CancellationToken ct)
+    private async Task<Result<UpdateInstallResult>> InstallDebAsync(UpdateOffer offer, string deb)
     {
         if (!deb.EndsWith(".deb", StringComparison.OrdinalIgnoreCase) || !File.Exists(deb))
             return Result<UpdateInstallResult>.Fail($"Expected a downloaded .deb, got {deb}; nothing was changed.");
 
+        // Not cancellable from here: what is stopped must come back.
         var (file, args) = DebInstallCommand(deb, SudoWithoutPassword(), InteractiveTerminal);
-        var restart = await StopAsync(ct).ConfigureAwait(false);
-        var exit = await Task.Run(() => RunElevated(file, args), ct).ConfigureAwait(false);
-        var warning = await RestartAsync(restart, ct).ConfigureAwait(false);
+        var restart = await StopAsync(CancellationToken.None).ConfigureAwait(false);
+        var exit = await Task.Run(() => RunElevated(file, args)).ConfigureAwait(false);
+        var warning = await RestartAsync(restart, CancellationToken.None).ConfigureAwait(false);
         if (exit != 0)
         {
             var why = exit switch

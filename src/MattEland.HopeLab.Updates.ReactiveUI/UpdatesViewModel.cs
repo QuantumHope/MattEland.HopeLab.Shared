@@ -69,13 +69,27 @@ public sealed class UpdatesViewModel : ReactiveObject, IDisposable
         DismissCommand = ReactiveCommand.CreateFromTask(DismissAsync);
         SaveTokenCommand = ReactiveCommand.CreateFromTask(SaveTokenAsync,
             this.WhenAnyValue(x => x.TokenInput, x => x.SavingToken, (t, s) => !string.IsNullOrWhiteSpace(t) && !s));
-        ClearTokenCommand = ReactiveCommand.Create(ClearToken);
+        ClearTokenCommand = ReactiveCommand.CreateFromTask(ClearTokenAsync);
         OpenReleaseNotesCommand = ReactiveCommand.CreateFromTask(async () =>
         {
             var url = Offer?.ReleaseUrl is { Length: > 0 } u ? u : _updates?.ReleasesUrl;
             if (url is not null) await _host.OpenUrlAsync(url);
         });
+        // Finding GitHub access may run the GitHub CLI: in the background, then the Settings row follows.
+        if (_updates is not null) _ = RefreshAccessAsync();
     }
+
+    /// <summary>Looks for GitHub access again (off the UI thread) and updates the Settings row.</summary>
+    public async Task RefreshAccessAsync()
+    {
+        if (_updates is null) return;
+        try { await _updates.RefreshAccessAsync(); }
+        catch (Exception e) when (e is IOException or InvalidOperationException) { }
+        RaiseAccess();
+    }
+
+    /// <summary>Apps call this when what <see cref="RestartWarning"/> would say has changed (a session opened, say).</summary>
+    public void RestartWarningChanged() => RaiseDerived();
 
     public string AppName { get; }
 
@@ -173,10 +187,12 @@ public sealed class UpdatesViewModel : ReactiveObject, IDisposable
     public bool SavingToken { get => _savingToken; private set => this.RaiseAndSetIfChanged(ref _savingToken, value); }
 
     public string AccessSource => _updates?.AccessSource ?? "none";
-    public bool HasSavedToken => AccessSource == "saved token";
+    /// <summary>A token is saved on this machine (Settings offers to remove it), even if another source is used first.</summary>
+    public bool HasSavedToken => _updates?.HasSavedToken == true;
 
     public string AccessText => AccessSource switch
     {
+        "checking" => "Checking GitHub access…",
         "none" => "No GitHub access. If the repository is private, paste a token below, or sign in with the GitHub CLI (gh auth login).",
         "saved token" => "Using the token saved on this machine.",
         "gh sign-in" => "Using the GitHub CLI's sign-in. A token saved here would be used instead.",
@@ -214,7 +230,7 @@ public sealed class UpdatesViewModel : ReactiveObject, IDisposable
                 // A timed check that fails stays quiet (offline is normal); Settings shows the reason.
                 Error = r.Error;
                 if (userAsked) _host.Toast("Couldn't check for updates", r.Error ?? "Unknown error", UpdateToastKind.Warning);
-                else if (AccessSource == "none" && !_toldNoAccess)
+                else if (!_toldNoAccess && await NoAccessAsync())
                 {
                     // But no way in at all won't fix itself: say so once per run.
                     _toldNoAccess = true;
@@ -305,10 +321,17 @@ public sealed class UpdatesViewModel : ReactiveObject, IDisposable
         if (CanUpdate) await CheckAsync(userAsked: false);
     }
 
-    private void ClearToken()
+    private async Task<bool> NoAccessAsync()
+    {
+        await RefreshAccessAsync();
+        return AccessSource == "none";
+    }
+
+    private async Task ClearTokenAsync()
     {
         if (_updates is null) return;
         var r = _updates.ClearToken();
+        await _updates.RefreshAccessAsync();
         if (r.IsSuccess) _host.Toast("Token removed", "Updates fall back to the GitHub CLI's sign-in, if there is one.", UpdateToastKind.Information);
         else _host.Toast("Couldn't remove the token", r.Error ?? "", UpdateToastKind.Error);
         RaiseAccess();

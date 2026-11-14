@@ -11,8 +11,10 @@ on:
 permissions:
   contents: read
 
+# A PR's newer push cancels its older run. Pushes to main each get their own group: GitHub keeps only one pending run per
+# group, so sharing one would silently drop a queued push (and its publish).
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:

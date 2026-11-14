@@ -232,43 +232,79 @@ public sealed class GitHubReleasesTests : IDisposable
     }
 
     [Fact]
-    public async Task Saving_a_token_keeps_one_that_can_see_the_repository_and_drops_one_that_cannot()
+    public async Task A_token_is_checked_on_its_own_before_it_is_saved_and_a_refused_one_changes_nothing()
     {
-        var before = (Environment.GetEnvironmentVariable("GH_TOKEN"), Environment.GetEnvironmentVariable("GITHUB_TOKEN"),
-            Environment.GetEnvironmentVariable(TestApp.TokenVariable));
+        const string list = "https://api.github.com/repos/o/r/releases?per_page=1";
+        var before = Environment.GetEnvironmentVariable("GH_TOKEN");
         try
         {
-            Environment.SetEnvironmentVariable("GH_TOKEN", null);
-            Environment.SetEnvironmentVariable("GITHUB_TOKEN", null);
-            Environment.SetEnvironmentVariable(TestApp.TokenVariable, null);
+            // Another token takes precedence: the candidate must still be the one checked, not GH_TOKEN.
+            Environment.SetEnvironmentVariable("GH_TOKEN", "from-environment");
             var home = Path.Combine(_dir, "home");
             var tokenFile = Path.Combine(home, "github-token");
-            var updater = TestApp.Updater(home, _dir, new GitHubReleases(new HttpClient(_gh), "o/r", () => GitHubToken.ReadSaved(tokenFile)));
+            var updater = TestApp.Updater(home, _dir, new HttpClient(_gh));
 
-            // Can see the repository, which has no release yet (latest → 404): kept.
-            _gh.Json("https://api.github.com/repos/o/r", "{}");
+            // Can read releases, none published yet (latest → 404, list → []): saved.
+            _gh.Json(list, "[]");
             var ok = await updater.SaveTokenAsync("github_pat_good");
             Assert.True(ok.IsSuccess, ok.Error);
             Assert.Contains("no published release yet", ok.Value);
+            Assert.Contains("GH_TOKEN is set too", ok.Value);
+            Assert.Equal("github_pat_good", GitHubToken.ReadSaved(tokenFile));
+            Assert.All(_gh.Requests, r => Assert.Equal("github_pat_good", r.Headers.Authorization?.Parameter));
+            Assert.True(updater.HasSavedToken);
+
+            // Can see the repository but not read its releases (404 or 403 on the list): refused, the good one stays.
+            _gh.Routes.Remove(list);
+            var bad = await updater.SaveTokenAsync("github_pat_metadata_only");
+            Assert.False(bad.IsSuccess);
+            Assert.Contains("can't read o/r's releases", bad.Error);
             Assert.Equal("github_pat_good", GitHubToken.ReadSaved(tokenFile));
 
-            // Can't see it: refused, and nothing left on disk.
-            _gh.Routes.Remove("https://api.github.com/repos/o/r");
-            var bad = await updater.SaveTokenAsync("github_pat_other_account");
-            Assert.False(bad.IsSuccess);
-            Assert.Contains("can't see", bad.Error);
-            Assert.Equal("github_pat_good", GitHubToken.ReadSaved(tokenFile)); // the good one is put back
-
             GitHubToken.Clear(tokenFile);
-            Assert.False((await updater.SaveTokenAsync("github_pat_other_account")).IsSuccess);
-            Assert.Null(GitHubToken.ReadSaved(tokenFile)); // and with none before, nothing is left
+            Assert.False((await updater.SaveTokenAsync("github_pat_metadata_only")).IsSuccess);
+            Assert.Null(GitHubToken.ReadSaved(tokenFile)); // with none before, nothing is written
+            Assert.False((await updater.SaveTokenAsync("two words")).IsSuccess);
         }
         finally
         {
-            Environment.SetEnvironmentVariable("GH_TOKEN", before.Item1);
-            Environment.SetEnvironmentVariable("GITHUB_TOKEN", before.Item2);
-            Environment.SetEnvironmentVariable(TestApp.TokenVariable, before.Item3);
+            Environment.SetEnvironmentVariable("GH_TOKEN", before);
         }
+    }
+
+    [Fact]
+    public void Only_one_process_updates_a_copy_at_a_time()
+    {
+        var updater = TestApp.Updater(Path.Combine(_dir, "home"), _dir);
+        using (var first = updater.TryLock())
+        {
+            Assert.NotNull(first);
+            Assert.Null(TestApp.Updater(Path.Combine(_dir, "home"), _dir).TryLock()); // another updater, same machine
+        }
+        using var again = updater.TryLock();
+        Assert.NotNull(again); // released when the first one finished
+    }
+
+    [Fact]
+    public async Task A_cancelled_install_stops_nothing()
+    {
+        var install = Path.Combine(_dir, "install");
+        Directory.CreateDirectory(install);
+        File.WriteAllText(Path.Combine(install, ReleaseStamp.FileName), new ReleaseStamp("OneRing", "0.1.1", "win-x64", "o/r", null, Now).ToJson());
+        var stopped = false;
+        var updater = new AppUpdater(new AppUpdateOptions("OneRing", "o/r", Path.Combine(_dir, "home"), "OneRing")
+        {
+            InstallDirectory = install,
+            GitHubCliToken = () => null,
+            StopServices = (_, _) => { stopped = true; return Task.FromResult<RestartServicesAsync?>(null); },
+        }, new FixedClock(Now), new HttpClient(_gh));
+        var offer = new UpdateOffer(new(0, 1, 2), new(0, 1, 1), "v0.1.2", "", null, Now, "win-x64", new("x.zip", "00", 1), new(1, "x.zip", 1, "", ""));
+
+        var r = await updater.InstallAsync(offer, install, new CancellationToken(canceled: true));
+
+        Assert.False(r.IsSuccess);
+        Assert.Contains("Cancelled", r.Error);
+        Assert.False(stopped);
     }
 
     [Fact]
@@ -278,12 +314,12 @@ public sealed class GitHubReleasesTests : IDisposable
         Directory.CreateDirectory(install);
         var home = Path.Combine(_dir, "home");
 
-        var fromSource = TestApp.Updater(home, install, Client());
+        var fromSource = TestApp.Updater(home, install, new HttpClient(_gh));
         Assert.False(fromSource.CanUpdate);
         Assert.Contains("built from source", fromSource.NotUpdatableReason);
 
         File.WriteAllText(Path.Combine(install, ReleaseStamp.FileName), new ReleaseStamp("OneRing", "0.1.1", "win-x64", "o/r", null, Now).ToJson());
-        var released = TestApp.Updater(home, install, Client());
+        var released = TestApp.Updater(home, install, new HttpClient(_gh));
         Assert.True(released.CanUpdate);
         Assert.Equal("0.1.1", released.CurrentVersion.ToString());
 
@@ -544,7 +580,9 @@ internal static class TestApp
     public const string TokenVariable = "HOPELAB_TEST_GITHUB_TOKEN";
     private static readonly DateTimeOffset Now = new(2026, 11, 13, 9, 0, 0, TimeSpan.Zero);
 
-    public static AppUpdater Updater(string dataDirectory, string? installDirectory, GitHubReleases? releases = null) =>
-        new(new AppUpdateOptions("OneRing", "o/r", dataDirectory, "OneRing") { TokenVariable = TokenVariable, InstallDirectory = installDirectory },
-            new FixedClock(Now), releases);
+    public static AppUpdater Updater(string dataDirectory, string? installDirectory, HttpClient? http = null) =>
+        new(new AppUpdateOptions("OneRing", "o/r", dataDirectory, "OneRing")
+        {
+            TokenVariable = TokenVariable, InstallDirectory = installDirectory, GitHubCliToken = () => null, // never the real gh
+        }, new FixedClock(Now), http ?? new HttpClient(new FakeGitHub()));
 }

@@ -25,8 +25,17 @@ public interface IUpdateService
     /// <summary>Starts the newly installed app. The caller then shuts this one down.</summary>
     Result<Unit> Launch(string executable);
 
-    /// <summary>Where GitHub access comes from now: an environment variable's name, "saved token", "gh sign-in" or "none".</summary>
+    /// <summary>
+    /// Where GitHub access comes from, as last found: an environment variable's name, "saved token", "gh sign-in", "none",
+    /// or "checking" before the first <see cref="RefreshAccessAsync"/>. Cheap to read: binding getters use it.
+    /// </summary>
     string AccessSource { get; }
+
+    /// <summary>Whether a token is saved on this machine, even when another source is used first.</summary>
+    bool HasSavedToken { get; }
+
+    /// <summary>Looks for GitHub access again, off the calling thread (it may run the GitHub CLI).</summary>
+    Task RefreshAccessAsync();
 
     /// <summary>Saves a token on this machine (for one without the GitHub CLI) and says what GitHub made of it.</summary>
     Task<Result<string>> SaveTokenAsync(string token, CancellationToken ct = default);
@@ -35,11 +44,14 @@ public interface IUpdateService
 }
 
 /// <summary>
-/// <see cref="IUpdateService"/> over an <see cref="AppUpdater"/>. Creating it clears what the previous update moved
-/// aside (the old process has exited by now, or it is left for next time).
+/// <see cref="IUpdateService"/> over an <see cref="AppUpdater"/>, for a UI: everything that may run the GitHub CLI or
+/// touch the network runs off the calling thread, and the access source is cached. Creating it clears what the previous
+/// update moved aside (the old process has exited by now, or it is left for next time).
 /// </summary>
 public sealed class AppUpdateService : IUpdateService
 {
+    private volatile string _accessSource = "checking";
+
     public AppUpdateService(AppUpdater updater)
     {
         Updater = updater;
@@ -53,18 +65,29 @@ public sealed class AppUpdateService : IUpdateService
     public bool AsksForPassword => Updater.IsDebPackage;
     public string ReleasesUrl => Updater.ReleasesUrl;
 
-    public Task<Result<UpdateCheck>> CheckAsync(CancellationToken ct = default) => Updater.CheckAsync(ct);
+    public Task<Result<UpdateCheck>> CheckAsync(CancellationToken ct = default) => Task.Run(() => Updater.CheckAsync(ct), ct);
 
-    public string AccessSource => Updater.FindToken().Source;
-    public Task<Result<string>> SaveTokenAsync(string token, CancellationToken ct = default) => Updater.SaveTokenAsync(token, ct);
-    public Result<Unit> ClearToken() => Updater.ClearToken();
+    public string AccessSource => _accessSource;
+    public bool HasSavedToken => Updater.HasSavedToken;
 
-    public async Task<Result<UpdateInstallResult>> InstallAsync(UpdateOffer offer, IProgress<long>? progress = null, CancellationToken ct = default)
+    public async Task RefreshAccessAsync() => _accessSource = (await Task.Run(Updater.FindToken).ConfigureAwait(false)).Source;
+
+    public async Task<Result<string>> SaveTokenAsync(string token, CancellationToken ct = default)
     {
-        var downloaded = await Updater.DownloadAsync(offer, progress, ct).ConfigureAwait(false);
-        if (!downloaded.IsSuccess) return Result<UpdateInstallResult>.Fail(downloaded.Error!);
-        return await Updater.InstallAsync(offer, downloaded.Value!, ct).ConfigureAwait(false);
+        var r = await Task.Run(() => Updater.SaveTokenAsync(token, ct), ct).ConfigureAwait(false);
+        await RefreshAccessAsync().ConfigureAwait(false);
+        return r;
     }
+
+    public Result<Unit> ClearToken()
+    {
+        var r = Updater.ClearToken();
+        _ = RefreshAccessAsync();
+        return r;
+    }
+
+    public Task<Result<UpdateInstallResult>> InstallAsync(UpdateOffer offer, IProgress<long>? progress = null, CancellationToken ct = default) =>
+        Task.Run(() => Updater.UpdateAsync(offer, progress, ct), ct);
 
     public Result<Unit> Launch(string executable)
     {
