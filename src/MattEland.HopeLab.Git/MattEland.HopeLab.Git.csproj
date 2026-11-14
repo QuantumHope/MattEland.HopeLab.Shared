@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsAotCompatible>true</IsAotCompatible>
+    <Description>A wrapper over the git CLI for the HopeLab apps: porcelain v2 status, worktree list/add/remove, merge preview, commit graph layout, fetch/pull/rebase, and a per-repository write lock.</Description>
+    <PackageTags>$(PackageTags);git</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MattEland.HopeLab.Common\MattEland.HopeLab.Common.csproj" />
+  </ItemGroup>
+</Project>

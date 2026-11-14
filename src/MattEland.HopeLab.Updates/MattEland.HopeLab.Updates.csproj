@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- AOT-safe (source-generated JSON, no reflection-based serialisation): OneRing's NativeAOT CLI uses it. -->
+    <IsAotCompatible>true</IsAotCompatible>
+    <Description>Updates for apps released on GitHub: latest.json manifests, version checks, private-repository tokens, verified downloads, in-place file swaps with rollback, and Debian-package installs.</Description>
+    <PackageTags>$(PackageTags);updates;github-releases;installer</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MattEland.HopeLab.Common\MattEland.HopeLab.Common.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="MattEland.HopeLab.Tests" />
+  </ItemGroup>
+</Project>

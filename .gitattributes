@@ -1,0 +1,2 @@
+# Shell scripts run on Linux, including installers/install.sh piped straight into bash: never CRLF.
+*.sh text eol=lf

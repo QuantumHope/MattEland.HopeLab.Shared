@@ -1,0 +1,366 @@
+# The release pipeline every HopeLab desktop app shares. An app calls it after its own tests pass:
+#
+#   release:
+#     needs: test
+#     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+#     uses: QuantumHope/MattEland.HopeLab.Shared/.github/workflows/app-release.yml@main
+#     with:
+#       publish: ${{ github.event_name == 'push' }}   # a manual run builds the packages without releasing
+#     permissions:
+#       contents: write
+#
+# It reads hopelab-app.json at the app's root (installers/hopelab-app.schema.json), and:
+#   version  v<major>.<minor>.<commits on the branch>, skipped if that tag exists (re-runs don't release twice)
+#   package  self-contained win-x64 and linux-x64 builds (NativeAOT projects over the top), each with release.json and
+#            hopelab-install.json; a zip, a tar.gz, a per-user setup.exe and a .deb
+#   release  latest.json (hashes plus install settings) and the installers with the app filled in; a draft first,
+#            every asset checked, then published and marked Latest
+#   smoke    each installer on a fresh runner: install, update from the previous release where it can, uninstall
+name: HopeLab app release
+
+on:
+  workflow_call:
+    inputs:
+      config:
+        description: The app's release config.
+        type: string
+        default: hopelab-app.json
+      shared-ref:
+        description: The MattEland.HopeLab.Shared ref whose installers and scripts to use (keep it the same as this workflow's).
+        type: string
+        default: main
+      publish:
+        description: False builds the packages as workflow artifacts and stops there.
+        type: boolean
+        default: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  SHARED: .hopelab
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+      exists: ${{ steps.v.outputs.exists }}
+      name: ${{ steps.v.outputs.name }}
+      id: ${{ steps.v.outputs.id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/checkout@v4
+        with:
+          repository: QuantumHope/MattEland.HopeLab.Shared
+          ref: ${{ inputs.shared-ref }}
+          path: ${{ env.SHARED }}
+      - id: v
+        run: |
+          version=$(python3 "$SHARED/installers/release/hopelab_release.py" version "${{ inputs.config }}" "$(git rev-list --count HEAD)")
+          tag="v$version"
+          exists=false
+          git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null && exists=true
+          name=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["name"])' "${{ inputs.config }}")
+          id=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "${{ inputs.config }}")
+          {
+            echo "version=$version"; echo "tag=$tag"; echo "exists=$exists"; echo "name=$name"; echo "id=$id"
+          } >> "$GITHUB_OUTPUT"
+          echo "$name $version (tag $tag, already released: $exists)" >> "$GITHUB_STEP_SUMMARY"
+
+  package:
+    name: Package (${{ matrix.rid }})
+    needs: version
+    if: needs.version.outputs.exists != 'true'
+    strategy:
+      matrix:
+        include:
+          - { os: windows-latest, rid: win-x64 }
+          # ubuntu-22.04: builds link against its glibc (2.35), which Pop!_OS 22.04, Ubuntu 22.04 and newer have.
+          - { os: ubuntu-22.04, rid: linux-x64 }
+    runs-on: ${{ matrix.os }}
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      RID: ${{ matrix.rid }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: QuantumHope/MattEland.HopeLab.Shared
+          ref: ${{ inputs.shared-ref }}
+          path: ${{ env.SHARED }}
+      - uses: actions/setup-dotnet@v4
+        if: hashFiles('global.json') != ''
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-dotnet@v4
+        if: hashFiles('global.json') == ''
+        with:
+          dotnet-version: '10.0.x'
+      - name: Read hopelab-app.json
+        shell: bash
+        run: python3 "$SHARED/installers/release/hopelab_release.py" env "${{ inputs.config }}" >> "$GITHUB_ENV"
+      - name: NativeAOT prerequisites
+        if: runner.os == 'Linux' && env.AOT_PROJECTS != ''
+        run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
+      - name: Publish
+        shell: bash
+        run: |
+          out="$RUNNER_TEMP/app"
+          dotnet publish "$DESKTOP_PROJECT" -c Release -r "$RID" --self-contained -p:Version="$VERSION" -o "$out"
+          for p in $AOT_PROJECTS; do
+            dotnet publish "$p" -c Release -r "$RID" -p:Version="$VERSION" -o "$out"
+          done
+          rm -f "$out"/*.pdb "$out"/*.dbg
+          [ -f "$out/$DESKTOP_EXE" ] || [ -f "$out/$DESKTOP_EXE.exe" ] || { echo "::error::$DESKTOP_EXE is not in the published folder"; exit 1; }
+          # The Linux menu entry's icon, as <exe>.png beside the binaries (the installers and the .deb look for it there).
+          if [ -n "$DESKTOP_PNG" ] && [ ! -f "$out/$DESKTOP_EXE.png" ]; then cp "$DESKTOP_PNG" "$out/$DESKTOP_EXE.png"; fi
+          python3 "$SHARED/installers/release/hopelab_release.py" stamp "${{ inputs.config }}" "$VERSION" "$RID" "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$out"
+          echo "OUT=$out" >> "$GITHUB_ENV"
+      - name: Archive (zip)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          7z a -tzip "dist/$env:APP_NAME-$env:VERSION-$env:RID.zip" "$env:OUT/*" | Out-Null
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Windows setup (Inno Setup, per user)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not $env:SETUP_APP_ID) { Write-Host '::error::hopelab-app.json needs windows.setupAppId (a {GUID}, never changed once released).'; exit 1 }
+          $iscc = (Get-Command iscc -ErrorAction SilentlyContinue)?.Source
+          if (-not $iscc) {
+            $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+            if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          }
+          $defines = @(
+            "/DAppName=$env:APP_NAME", "/DAppId=$env:SETUP_APP_ID", "/DAppExe=$env:DESKTOP_EXE", "/DAppVersion=$env:VERSION",
+            "/DSourceDir=$env:OUT", "/DOutputDir=$PWD\dist", "/DPublisher=$env:APP_PUBLISHER", "/DDescription=$env:APP_DESCRIPTION",
+            "/DAddToPath=$env:ADD_TO_PATH", "/DProcesses=$env:PROCESSES", "/DRepoUrl=https://github.com/$env:GITHUB_REPOSITORY"
+          )
+          if ($env:STOP_ARGS) { $defines += "/DStopArgs=$env:STOP_ARGS" }
+          if ($env:UNINSTALL_ARGS) { $defines += "/DUninstallArgs=$env:UNINSTALL_ARGS" }
+          if ($env:DESKTOP_ICON) { $defines += "/DIconFile=$PWD\$env:DESKTOP_ICON" }
+          & $iscc /Q @defines "$env:SHARED\installers\windows\app.iss"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-ChildItem dist
+      - name: Archive (tar.gz, keeps the execute bits)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p dist
+          tar -C "$OUT" -czf "dist/$APP_NAME-$VERSION-$RID.tar.gz" .
+      - name: Debian package
+        if: runner.os == 'Linux'
+        run: |
+          python3 - "${{ inputs.config }}" "$GITHUB_REPOSITORY" > "$RUNNER_TEMP/deb-config.json" <<'PY'
+          import json, sys
+          c = json.load(open(sys.argv[1])); c["repositoryUrl"] = "https://github.com/" + sys.argv[2]; print(json.dumps(c))
+          PY
+          bash "$SHARED/installers/linux/build-deb.sh" "$OUT" "$VERSION" dist "$RUNNER_TEMP/deb-config.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ needs.version.outputs.id }}-${{ matrix.rid }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    needs: [version, package]
+    if: inputs.publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      TAG: ${{ needs.version.outputs.tag }}
+      APP_NAME: ${{ needs.version.outputs.name }}
+      APP_ID: ${{ needs.version.outputs.id }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/checkout@v4
+        with:
+          repository: QuantumHope/MattEland.HopeLab.Shared
+          ref: ${{ inputs.shared-ref }}
+          path: ${{ env.SHARED }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Manifest, installers and notes
+        run: |
+          python3 "$SHARED/installers/release/hopelab_release.py" manifest "${{ inputs.config }}" "$VERSION" "$TAG" "$GITHUB_SHA" dist
+          python3 "$SHARED/installers/release/hopelab_release.py" installers "${{ inputs.config }}" "$GITHUB_REPOSITORY" "$SHARED" dist
+          previous=$(git tag -l 'v*' --sort=-v:refname | head -n1)
+          shared="https://raw.githubusercontent.com/QuantumHope/MattEland.HopeLab.Shared/main/installers"
+          {
+            echo "Built from ${GITHUB_SHA::7}."
+            echo
+            echo "### Changes"
+            if [ -n "$previous" ]; then git log --no-merges --pretty='- %s (%h)' "$previous..HEAD" | head -n 60
+            else git log --no-merges --pretty='- %s (%h)' -n 30; fi
+            echo
+            echo "### Install"
+            echo "- **Windows:** \`$APP_NAME-$VERSION-win-x64-setup.exe\` (per user, no admin), or in PowerShell:"
+            echo "  \`& ([scriptblock]::Create((irm $shared/install.ps1))) -Repo $GITHUB_REPOSITORY\`"
+            echo "- **Debian, Ubuntu, Pop!_OS:** \`sudo apt install ./${APP_ID}_${VERSION}_amd64.deb\`, or without sudo:"
+            echo "  \`curl -fsSL $shared/install.sh | bash -s -- --repo $GITHUB_REPOSITORY\`"
+            echo "- Already installed: $APP_NAME updates itself (Settings → Updates)."
+          } > notes.md
+          ls -l dist
+      # A re-run after a failure finds its own draft and finishes it; a release that is already published is left alone.
+      - name: Create the release as a draft (or resume this tag's draft)
+        id: draft
+        run: |
+          state=$(gh release view "$TAG" --json isDraft --jq 'if .isDraft then "draft" else "published" end' 2>/dev/null || echo none)
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+          case "$state" in
+            none) gh release create "$TAG" dist/* --draft --title "$APP_NAME $VERSION" --notes-file notes.md --target "$GITHUB_SHA" ;;
+            draft) gh release upload "$TAG" dist/* --clobber && gh release edit "$TAG" --notes-file notes.md ;;
+            published) echo "$TAG is already published; nothing to do." ;;
+          esac
+      - name: Check its assets, then publish
+        if: steps.draft.outputs.state != 'published'
+        run: |
+          names=$(gh release view "$TAG" --json assets --jq '.assets[].name')
+          for want in latest.json install.sh install.ps1 "$APP_NAME-$VERSION-win-x64.zip" "$APP_NAME-$VERSION-linux-x64.tar.gz" \
+                      "$APP_NAME-$VERSION-win-x64-setup.exe" "${APP_ID}_${VERSION}_amd64.deb"; do
+            echo "$names" | grep -qx "$want" || { echo "::error::$TAG is missing $want"; exit 1; }
+          done
+          gh release edit "$TAG" --draft=false --latest=false
+          # Runs aren't serialised (a concurrency group would drop queued main pushes), so two can finish out of order:
+          # only the highest published version is marked Latest, which an older run can never take back.
+          highest=$(gh release list --exclude-drafts -L 100 --json tagName --jq '.[].tagName' | grep '^v' | sort -V | tail -n1)
+          [ "$highest" = "$TAG" ] && gh release edit "$TAG" --latest
+          echo "Published [$TAG]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$TAG)" >> "$GITHUB_STEP_SUMMARY"
+
+  # Each installer on a fresh runner, as a new machine would use it; then, where the previous release has the same
+  # installer and the app has an update command, install that one and let the app bring itself forward.
+  smoke:
+    name: Install and update (${{ matrix.os }})
+    needs: [version, release]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      TAG: ${{ needs.version.outputs.tag }}
+      APP_NAME: ${{ needs.version.outputs.name }}
+      APP_ID: ${{ needs.version.outputs.id }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: QuantumHope/MattEland.HopeLab.Shared
+          ref: ${{ inputs.shared-ref }}
+          path: ${{ env.SHARED }}
+      - name: Read hopelab-app.json and the previous release
+        shell: bash
+        run: |
+          python3 "$SHARED/installers/release/hopelab_release.py" env "${{ inputs.config }}" >> "$GITHUB_ENV"
+          prev=$(gh release list -R "$GITHUB_REPOSITORY" -L 5 --exclude-drafts --json tagName --jq "[.[].tagName | select(. != \"$TAG\")][0] // \"\"")
+          echo "PREV=$prev" >> "$GITHUB_ENV"
+          echo "PREV_ASSETS<<EOF" >> "$GITHUB_ENV"
+          [ -n "$prev" ] && gh release view "$prev" -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' >> "$GITHUB_ENV"
+          echo "EOF" >> "$GITHUB_ENV"
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p install.sh -p install.ps1 -D "$RUNNER_TEMP/scripts"
+      - name: install.sh, update, uninstall
+        if: runner.os == 'Linux'
+        run: |
+          app="$HOME/.local/share/$APP_ID/app"
+          expect() { v=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$app/release.json"); echo "installed: $v"; [ "$v" = "$1" ]; }
+          bash "$RUNNER_TEMP/scripts/install.sh" --no-launch
+          expect "$VERSION"
+          test -f "$HOME/.local/share/applications/$APP_ID.desktop"
+          if [ -n "$PREV" ] && [ -n "$UPDATE_COMMAND" ] && echo "$PREV_ASSETS" | grep -q '^install\.sh$'; then
+            bash "$RUNNER_TEMP/scripts/install.sh" --no-launch --version "${PREV#v}"
+            expect "${PREV#v}"
+            # No GH_TOKEN: only the token the installer saved, as on a machine without the GitHub CLI.
+            (cd "$app" && env -u GH_TOKEN ./$UPDATE_COMMAND)
+            expect "$VERSION"
+          fi
+          bash "$RUNNER_TEMP/scripts/install.sh" --uninstall
+          test ! -e "$app"
+      - name: .deb with apt, update through apt, remove
+        if: runner.os == 'Linux'
+        run: |
+          deb() { dir="$RUNNER_TEMP/deb-$1"; gh release download "$1" -R "$GITHUB_REPOSITORY" -p "${APP_ID}_*_amd64.deb" -D "$dir"; ls "$dir"/*.deb; }
+          expect() { v=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "/opt/$APP_ID/release.json"); echo "installed: $v"; [ "$v" = "$1" ]; }
+          sudo apt-get install -y "$(deb "$TAG")"
+          expect "$VERSION"
+          grep -q '"package": "deb"' "/opt/$APP_ID/release.json"
+          test -f "/usr/share/applications/$APP_ID.desktop"
+          if [ -n "$PREV" ] && [ -n "$UPDATE_COMMAND" ] && echo "$PREV_ASSETS" | grep -q '\.deb$'; then
+            sudo apt-get install -y --allow-downgrades "$(deb "$PREV")"
+            expect "${PREV#v}"
+            # The app downloads the next .deb and runs apt-get through sudo -n (no password needed on a runner).
+            (cd "/opt/$APP_ID" && ./$UPDATE_COMMAND)
+            expect "$VERSION"
+          fi
+          sudo apt-get remove -y "$APP_ID"
+          test ! -e "/opt/$APP_ID/$DESKTOP_EXE"
+      - name: install.ps1, update, uninstall
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $app = Join-Path $env:LOCALAPPDATA "Programs\$env:APP_NAME"
+          function Expect($want) { $v = (Get-Content "$app\release.json" -Raw | ConvertFrom-Json).version; Write-Host "installed: $v"; if ($v -ne $want) { throw "expected $want" } }
+          & "$env:RUNNER_TEMP\scripts\install.ps1" -NoLaunch
+          Expect $env:VERSION
+          if (-not (Test-Path (Join-Path ([Environment]::GetFolderPath('Programs')) "$env:APP_NAME.lnk"))) { throw 'no Start menu shortcut' }
+          if ($env:PREV -and $env:UPDATE_COMMAND -and ($env:PREV_ASSETS -split "`n" -contains 'install.ps1')) {
+            & "$env:RUNNER_TEMP\scripts\install.ps1" -NoLaunch -Version $env:PREV
+            Expect $env:PREV.TrimStart('v')
+            $saved = $env:GH_TOKEN
+            $env:GH_TOKEN = $null   # only the token the installer saved, as on a machine without the GitHub CLI
+            $argv = $env:UPDATE_COMMAND -split ' '
+            & (Join-Path $app "$($argv[0]).exe") @($argv | Select-Object -Skip 1)
+            if ($LASTEXITCODE -ne 0) { throw "update exited $LASTEXITCODE" }
+            Expect $env:VERSION
+            $env:GH_TOKEN = $saved
+          }
+          & "$env:RUNNER_TEMP\scripts\install.ps1" -Uninstall
+          if (Test-Path "$app\release.json") { throw 'uninstall left the app behind' }
+      - name: setup.exe (silent), update, uninstall
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $app = Join-Path $env:LOCALAPPDATA "Programs\$env:APP_NAME"
+          $key = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$($env:SETUP_APP_ID)_is1"
+          function Setup($tag) {
+            $dir = Join-Path $env:RUNNER_TEMP "setup-$tag"
+            gh release download $tag -R $env:GITHUB_REPOSITORY -p '*-win-x64-setup.exe' -D $dir
+            $exe = (Get-ChildItem "$dir\*-setup.exe" | Select-Object -First 1).FullName
+            Start-Process $exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait
+          }
+          function Expect($want) {
+            $v = (Get-Content "$app\release.json" -Raw | ConvertFrom-Json).version; Write-Host "installed: $v"
+            if ($v -ne $want) { throw "expected $want" }
+            $shown = (Get-ItemProperty $key).DisplayVersion
+            if ($shown -ne $want) { throw "Apps & features shows $shown, expected $want" }
+          }
+          Setup $env:TAG
+          Expect $env:VERSION
+          if ($env:ADD_TO_PATH -eq '1' -and -not ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' -contains $app)) { throw 'setup did not add the app to PATH' }
+          if ($env:PREV -and $env:UPDATE_COMMAND -and ($env:PREV_ASSETS -split "`n" | Where-Object { $_ -like '*-setup.exe' })) {
+            Setup $env:PREV
+            Expect $env:PREV.TrimStart('v')
+            $argv = $env:UPDATE_COMMAND -split ' '
+            & (Join-Path $app "$($argv[0]).exe") @($argv | Select-Object -Skip 1)   # the in-place swap over a setup install
+            if ($LASTEXITCODE -ne 0) { throw "update exited $LASTEXITCODE" }
+            Expect $env:VERSION
+          }
+          $uninstaller = (Get-ItemProperty $key).UninstallString.Trim('"')
+          Start-Process $uninstaller -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait
+          # The uninstaller hands over to a copy of itself in %TEMP% and returns at once; wait for it to finish.
+          for ($i = 0; $i -lt 60 -and ((Test-Path "$app\release.json") -or (Test-Path $key)); $i++) { Start-Sleep 1 }
+          if (Test-Path "$app\release.json") { throw 'the uninstaller left files behind' }
+          if (Test-Path $key) { throw 'the uninstaller left the Apps & features entry' }

@@ -1,0 +1,33 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <!-- Major and minor. CI sets the patch to the number of commits on main, so every merge publishes a higher version
+         (MattEland.HopeLab.*.0.1.<n>); bump these by hand for a breaking change. -->
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+
+  <!-- NuGet metadata, the same for every package. -->
+  <PropertyGroup>
+    <Authors>Matt Eland</Authors>
+    <Copyright>Copyright (c) 2026 Matt Eland</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/QuantumHope/MattEland.HopeLab.Shared</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/QuantumHope/MattEland.HopeLab.Shared</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>hopelab</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(IsPackable)' != 'false' and '$(IsTestProject)' != 'true'">
+    <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
+</Project>
