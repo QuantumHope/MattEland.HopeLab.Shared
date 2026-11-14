@@ -36,6 +36,7 @@ LAUNCH=1
 UNINSTALL=0
 SAVE_TOKEN=1
 APP=""
+APP_GIVEN=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -43,7 +44,7 @@ while [ $# -gt 0 ]; do
     --version) VERSION="${2#v}"; shift 2 ;;
     --no-launch) LAUNCH=0; shift ;;
     --no-save-token) SAVE_TOKEN=0; shift ;;
-    --install-dir) APP="$2"; shift 2 ;;
+    --install-dir) APP="$2"; APP_GIVEN=1; shift 2 ;;
     --uninstall) UNINSTALL=1; shift ;;
     -h|--help) sed -n '2,30p' "$0" 2>/dev/null || true; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 2 ;;
@@ -62,7 +63,7 @@ DESKTOP_FILE="$HOME/.local/share/applications/$ID.desktop"
 command -v python3 >/dev/null 2>&1 || die "python3 is needed to read the release manifest (sudo apt install python3)."
 
 # ---- the app's install settings (from a release's latest.json, or the copy kept in the app folder) ----
-# Sets: EXE, COMMANDS ("name exe" lines), PROCESSES, STOP, BEFORE_UNINSTALL, UNIT, DATA_DIR, TOKEN_VAR, FIRST_RUN,
+# Sets: SET_ID, SET_NAME, EXE, COMMANDS ("name exe" lines), PROCESSES, STOP, BEFORE_UNINSTALL, UNIT, DATA_DIR, TOKEN_VAR, FIRST_RUN,
 # UNINSTALL_NOTE, DESCRIPTION, CATEGORIES.
 load_settings() { # load_settings <json file> <key: "install" in latest.json, or "" for hopelab-install.json>
   eval "$(python3 - "$1" "$2" "$HOME" <<'PY'
@@ -74,6 +75,8 @@ def q(v): return shlex.quote(v or "")
 data = s.get("dataDirectory") or ""
 override = os.environ.get(s.get("dataDirectoryVariable") or "", "") if s.get("dataDirectoryVariable") else ""
 data_dir = override or (os.path.join(home, data) if data else "")
+print("SET_ID=" + q(s.get("id")))
+print("SET_NAME=" + q(s.get("name") or doc.get("app")))
 print("EXE=" + q(s.get("executable") or doc.get("executable") or ""))
 print("COMMANDS=" + q("\n".join(f"{k} {v}" for k, v in (s.get("commands") or {}).items())))
 print("PROCESSES=" + q(" ".join(s.get("processes") or [])))
@@ -127,6 +130,17 @@ stop_app() {
   done
 }
 
+# Starts again what stop_app stopped: through systemd if that's where it ran, otherwise by its absolute path (the same
+# path app_pids identifies it by).
+bring_back() {
+  if [ "$via_systemd" = 1 ]; then
+    systemctl --user start "$UNIT" || echo "$UNIT didn't restart: systemctl --user start $UNIT"
+  else
+    local p
+    for p in $was_running; do (cd "$APP" && nohup setsid "$APP/$p" >/dev/null 2>&1 &); done
+  fi
+}
+
 if [ "$UNINSTALL" = 1 ]; then
   [ -f "$APP/hopelab-install.json" ] && load_settings "$APP/hopelab-install.json" "" || { EXE="$NAME"; COMMANDS=""; PROCESSES=""; STOP=""; BEFORE_UNINSTALL=""; UNIT=""; DATA_DIR=""; UNINSTALL_NOTE=""; }
   EXE="${EXE:-$NAME}"
@@ -154,7 +168,10 @@ trap 'rm -rf "$WORK"' EXIT
 # looking in the folder of a previous install's settings.
 [ -f "$APP/hopelab-install.json" ] && load_settings "$APP/hopelab-install.json" "" || { DATA_DIR=""; TOKEN_VAR=""; }
 app_var="$(printf '%s' "${ID}" | tr '[:lower:]-' '[:upper:]_')_GITHUB_TOKEN"
-token="${!app_var:-${GH_TOKEN:-${GITHUB_TOKEN:-}}}"
+token=""
+for v in $TOKEN_VAR "$app_var" GH_TOKEN GITHUB_TOKEN; do   # the configured variable first, when a previous install named one
+  [ -n "${!v:-}" ] && { token="${!v}"; break; }
+done
 token_from="environment"
 if [ -z "$token" ] && [ -n "$DATA_DIR" ] && [ -s "$DATA_DIR/github-token" ]; then token="$(tr -d '[:space:]' < "$DATA_DIR/github-token")"; token_from="saved"; fi
 if [ -z "$token" ] && [ -s "$HOME/.$ID/github-token" ]; then token="$(tr -d '[:space:]' < "$HOME/.$ID/github-token")"; token_from="saved"; fi
@@ -200,13 +217,20 @@ manifest_url="$(asset_url latest.json)"
 [ -n "$manifest_url" ] || die "the release has no latest.json."
 api "$manifest_url" "application/octet-stream" "$WORK/latest.json"
 load_settings "$WORK/latest.json" install
+# The release says who the app is. A script fetched by repository name guessed from the repository; if the release
+# disagrees, use the release's id and name, so this updates the same install setup.exe or the release's own script made.
+[ -n "$SET_NAME" ] && NAME="$SET_NAME"
+if [ -n "$SET_ID" ] && [ "$SET_ID" != "$ID" ]; then
+  ID="$SET_ID"
+  [ "$APP_GIVEN" = 1 ] || APP="$HOME/.local/share/$ID/app"
+  DESKTOP_FILE="$HOME/.local/share/applications/$ID.desktop"
+fi
 EXE="${EXE:-$NAME}"   # a release without install settings: the app's name is its executable
-NAME="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("app") or sys.argv[2])' "$WORK/latest.json" "$NAME")"
 
-read -r ver archive sha < <(python3 -c '
+IFS=$'\t' read -r ver archive sha < <(python3 -c '
 import json, sys
 m = json.load(open(sys.argv[1])); a = m["assets"][sys.argv[2]]
-print(m["version"], a["name"], a["sha256"])' "$WORK/latest.json" "$RID") || die "the release has no $RID build."
+print(m["version"], a["name"], a["sha256"], sep="\t")' "$WORK/latest.json" "$RID") || die "the release has no $RID build."
 
 archive_url="$(asset_url "$archive")"
 [ -n "$archive_url" ] || die "the release lists $archive but doesn't have it."
@@ -214,20 +238,47 @@ say "Downloading $NAME $ver ($archive)"
 api "$archive_url" "application/octet-stream" "$WORK/$archive"
 echo "$sha  $WORK/$archive" | sha256sum -c --quiet - || die "$archive didn't match its checksum; nothing was installed."
 
-mkdir -p "$WORK/new"
-tar -xzf "$WORK/$archive" -C "$WORK/new"
-[ -x "$WORK/new/$EXE" ] || die "$archive is missing $EXE."
+mkdir -p "$(dirname "$APP")"
+NEW="$(mktemp -d "$(dirname "$APP")/.$ID-new.XXXXXX")"
+trap 'rm -rf "$WORK" "$NEW"' EXIT
+tar -xzf "$WORK/$archive" -C "$NEW"
+[ -x "$NEW/$EXE" ] || die "$archive is missing $EXE."
 
-# ---- swap the folder in place ----
+# ---- replace the files in place ----
+# The folder itself never goes away, even for a moment: hooks, a login entry and the running app hold paths into it.
+# Each new file is renamed over its old one (a running program keeps its old file until it exits); the old ones are
+# moved to .update-old/ first, so a failure part way can put them all back. The same scheme as the apps' own updater.
+ASIDE="$APP/.update-old/install-$(date +%Y%m%d-%H%M%S)"
+: > "$WORK/moved"
+replace_in_place() {
+  local f rel
+  while IFS= read -r -d '' f; do
+    rel="${f#"$NEW"/}"
+    mkdir -p "$APP/$(dirname "$rel")" || return 1
+    if [ -e "$APP/$rel" ] || [ -L "$APP/$rel" ]; then
+      mkdir -p "$ASIDE/$(dirname "$rel")" && mv -f "$APP/$rel" "$ASIDE/$rel" || return 1
+    fi
+    printf '%s\0' "$rel" >> "$WORK/moved"
+    mv -f "$f" "$APP/$rel" || return 1
+  done < <(find "$NEW" \( -type f -o -type l \) -print0)
+}
+roll_back() {
+  local rel
+  while IFS= read -r -d '' rel; do
+    rm -f "$APP/$rel"
+    if [ -e "$ASIDE/$rel" ] || [ -L "$ASIDE/$rel" ]; then mv -f "$ASIDE/$rel" "$APP/$rel"; fi
+  done < "$WORK/moved"
+}
 installed_before=0
 [ -f "$APP/release.json" ] && installed_before=1
 stop_app
-mkdir -p "$(dirname "$APP")"
-rm -rf "$APP.new" "$APP.old"
-mv "$WORK/new" "$APP.new"
-[ -d "$APP" ] && mv "$APP" "$APP.old"
-mv "$APP.new" "$APP"
-rm -rf "$APP.old"   # a running copy keeps its files open until it exits; Linux frees them then
+mkdir -p "$APP"
+if ! replace_in_place; then
+  roll_back
+  bring_back
+  die "couldn't put the new files in $APP; the previous version is back as it was."
+fi
+rm -rf "$APP/.update-old"   # a running copy keeps its files open until it exits; Linux frees them then
 
 # ---- commands and menu entry ----
 mkdir -p "$BIN" "$(dirname "$DESKTOP_FILE")"
@@ -246,11 +297,7 @@ EOF
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$(dirname "$DESKTOP_FILE")" >/dev/null 2>&1 || true
 
 # ---- bring back what was running beside the app ----
-if [ "$via_systemd" = 1 ]; then
-  systemctl --user start "$UNIT" || echo "$UNIT didn't restart: systemctl --user start $UNIT"
-else
-  for p in $was_running; do (cd "$APP" && nohup setsid "./$p" >/dev/null 2>&1 &) ; done
-fi
+bring_back
 
 if [ "$installed_before" = 1 ]; then say "Updated $NAME to $ver in $APP"; else say "Installed $NAME $ver in $APP"; fi
 if [ -n "$token" ] && [ "$SAVE_TOKEN" = 1 ] && [ -n "$DATA_DIR" ] && { [ "$token_from" = prompt ] || [ "$token_from" = environment ]; }; then

@@ -218,9 +218,13 @@ public sealed class UpdatesViewModel : ReactiveObject, IDisposable
             .DisposeWith(_timers);
     }
 
+    /// <summary>
+    /// Checks once. A check already running, or an install, wins: every caller (the timer, Check now, saving a token)
+    /// goes through this guard, so two checks never overlap and Checking can't be cleared under another one.
+    /// </summary>
     public async Task CheckAsync(bool userAsked)
     {
-        if (_updates is null) return;
+        if (_updates is null || Checking || Installing) return;
         Checking = true;
         try
         {
@@ -230,7 +234,9 @@ public sealed class UpdatesViewModel : ReactiveObject, IDisposable
                 // A timed check that fails stays quiet (offline is normal); Settings shows the reason.
                 Error = r.Error;
                 if (userAsked) _host.Toast("Couldn't check for updates", r.Error ?? "Unknown error", UpdateToastKind.Warning);
-                else if (!_toldNoAccess && await NoAccessAsync())
+                // Only an access failure (a private repository and no token, a rejected token) is worth a toast: being
+                // offline, or a public repository's check failing for any other reason, stays quiet.
+                else if (!_toldNoAccess && GitHubReleases.IsAccessProblem(r.Error))
                 {
                     // But no way in at all won't fix itself: say so once per run.
                     _toldNoAccess = true;
@@ -319,12 +325,6 @@ public sealed class UpdatesViewModel : ReactiveObject, IDisposable
         }
         finally { SavingToken = false; }
         if (CanUpdate) await CheckAsync(userAsked: false);
-    }
-
-    private async Task<bool> NoAccessAsync()
-    {
-        await RefreshAccessAsync();
-        return AccessSource == "none";
     }
 
     private async Task ClearTokenAsync()

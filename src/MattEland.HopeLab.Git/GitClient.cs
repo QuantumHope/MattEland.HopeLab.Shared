@@ -13,7 +13,9 @@ public sealed class GitClient(IProcessRunner? runner = null, string gitExecutabl
 
     private readonly IProcessRunner _runner = runner ?? ProcessRunner.Instance;
     private readonly TimeProvider _time = time ?? TimeProvider.System;
-    private static readonly ConcurrentDictionary<string, SemaphoreSlim> RepoGates = new(StringComparer.Ordinal);
+    // One gate per repository: case-insensitive on Windows, where C:\Repos\Demo and c:\repos\demo are the same folder.
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> RepoGates =
+        new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
     private GitVersion? _version;
     private DateTimeOffset _versionAt;
 

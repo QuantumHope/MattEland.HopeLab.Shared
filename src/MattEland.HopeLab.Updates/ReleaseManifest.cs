@@ -19,10 +19,20 @@ public sealed record ReleaseManifest(
 {
     public const string FileName = "latest.json";
 
+    /// <summary>
+    /// The manifest, or null when it isn't one: unreadable JSON, or missing the version, the assets, or an asset's name or
+    /// hash (JSON nulls get past the deserializer, so they're checked here rather than failing later).
+    /// </summary>
     public static ReleaseManifest? Parse(string json)
     {
-        try { return JsonSerializer.Deserialize(json, UpdatesJson.Default.ReleaseManifest); }
+        ReleaseManifest? m;
+        try { m = JsonSerializer.Deserialize(json, UpdatesJson.Default.ReleaseManifest); }
         catch (JsonException) { return null; }
+        if (m is null || string.IsNullOrWhiteSpace(m.Version) || m.Assets is null) return null;
+        foreach (var (key, asset) in m.Assets)
+            if (string.IsNullOrWhiteSpace(key) || asset is null || string.IsNullOrWhiteSpace(asset.Name) || string.IsNullOrWhiteSpace(asset.Sha256))
+                return null;
+        return m;
     }
 
     public string ToJson() => JsonSerializer.Serialize(this, UpdatesJson.Default.ReleaseManifest);

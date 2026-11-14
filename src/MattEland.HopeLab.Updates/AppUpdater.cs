@@ -226,26 +226,52 @@ public sealed class AppUpdater
         if (ReleaseStamp.Read(downloaded) is not { } stamp || !string.Equals(stamp.Rid, Rid, StringComparison.OrdinalIgnoreCase)
             || !string.Equals(stamp.App, Stamp!.App, StringComparison.OrdinalIgnoreCase))
             return Result<UpdateInstallResult>.Fail($"The download isn't a {_options.AppName} build for {Rid}; nothing was changed.");
+        if (!ReleaseVersion.TryParse(stamp.Version, out var staged) || staged.Value != offer.Version)
+            return Result<UpdateInstallResult>.Fail($"The download is {_options.AppName} {stamp.Version}, not {offer.Version}; nothing was changed.");
 
         var restart = await StopAsync(CancellationToken.None).ConfigureAwait(false);
-        var swapped = InstallSwap.Apply(downloaded, InstallDirectory, _clock.UtcNow);
-        if (swapped.IsSuccess && _options.WindowsSetupAppId is { } appId)
-            WindowsSetupEntry.SetVersion(appId, InstallDirectory, offer.Version.ToString());
-
-        // Whether or not the swap worked, what was running comes back (new files, or the restored old ones).
-        var warning = await RestartAsync(restart, CancellationToken.None).ConfigureAwait(false);
+        Result<int> swapped;
+        string? warning = null;
+        try
+        {
+            swapped = InstallSwap.Apply(downloaded, InstallDirectory, _clock.UtcNow);
+            if (swapped.IsSuccess && _options.WindowsSetupAppId is { } appId)
+                WindowsSetupEntry.SetVersion(appId, InstallDirectory, offer.Version.ToString());
+        }
+        finally
+        {
+            // Whether the swap worked, failed or threw, what was running comes back (new files, or the restored old ones).
+            warning = await RestartAsync(restart, CancellationToken.None).ConfigureAwait(false);
+        }
         if (!swapped.IsSuccess) return Result<UpdateInstallResult>.Fail(swapped.Error!);
 
-        TryDelete(Path.GetDirectoryName(downloaded)!);
+        DeleteOwnDownload(offer, downloaded);
         return Result<UpdateInstallResult>.Ok(new UpdateInstallResult(offer.Version, swapped.Value, DesktopExecutablePath,
             restart is not null && warning is null, warning));
     }
 
-    /// <summary>Removes what the last update moved aside. Safe to call on every start.</summary>
+    /// <summary>
+    /// Removes what the last update moved aside. Safe to call on every start: it takes the update lock, so it never
+    /// deletes the backups of an update another process is in the middle of (it skips, and the next start cleans up).
+    /// </summary>
     public void CleanUp()
     {
         if (Stamp is null) return;
+        using var held = TryLock();
+        if (held is null) return;
         InstallSwap.CleanUp(InstallDirectory);
+    }
+
+    /// <summary>
+    /// Deletes the download folder for <paramref name="offer"/> (<c>&lt;updates&gt;/&lt;version&gt;/</c>) if
+    /// <paramref name="downloaded"/> is inside it; a file or folder from anywhere else is the caller's and is left alone.
+    /// </summary>
+    private void DeleteOwnDownload(UpdateOffer offer, string downloaded)
+    {
+        var own = Path.GetFullPath(Path.Combine(_options.UpdatesDirectory, offer.Version.ToString()));
+        var full = Path.GetFullPath(downloaded);
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        if (full.StartsWith(own + Path.DirectorySeparatorChar, comparison)) TryDelete(own);
     }
 
     private async Task<RestartServicesAsync?> StopAsync(CancellationToken ct) =>
@@ -292,8 +318,19 @@ public sealed class AppUpdater
         // Not cancellable from here: what is stopped must come back.
         var (file, args) = DebInstallCommand(deb, SudoWithoutPassword(), InteractiveTerminal);
         var restart = await StopAsync(CancellationToken.None).ConfigureAwait(false);
-        var exit = await Task.Run(() => RunElevated(file, args)).ConfigureAwait(false);
-        var warning = await RestartAsync(restart, CancellationToken.None).ConfigureAwait(false);
+        int exit;
+        string? warning;
+        try
+        {
+            exit = await Task.Run(() => RunElevated(file, args)).ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            // Whatever went wrong, what was stopped comes back before the error is reported.
+            await RestartAsync(restart, CancellationToken.None).ConfigureAwait(false);
+            return Result<UpdateInstallResult>.Fail($"Couldn't run {file}: {e.Message} {_options.AppName} {CurrentVersion} is still installed.");
+        }
+        warning = await RestartAsync(restart, CancellationToken.None).ConfigureAwait(false);
         if (exit != 0)
         {
             // Only a refused or failed authentication means apt-get never ran. Any other failure can come after dpkg
@@ -314,7 +351,7 @@ public sealed class AppUpdater
         // The package replaced release.json too; make sure it is the version we meant.
         if (ReleaseStamp.Read(InstallDirectory) is not { } now || now.Version != offer.Version.ToString())
             return Result<UpdateInstallResult>.Fail($"apt-get finished, but {InstallDirectory} doesn't hold {_options.AppName} {offer.Version}.");
-        TryDelete(Path.GetDirectoryName(deb)!);
+        DeleteOwnDownload(offer, deb);
         return Result<UpdateInstallResult>.Ok(new UpdateInstallResult(offer.Version, 1, DesktopExecutablePath,
             restart is not null && warning is null, warning));
     }

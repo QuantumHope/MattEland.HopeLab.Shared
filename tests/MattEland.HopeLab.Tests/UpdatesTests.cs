@@ -380,7 +380,8 @@ public sealed class DebUpdateTests : IDisposable
         var install = Path.Combine(_dir, "opt", "onering");
         Directory.CreateDirectory(install);
         File.WriteAllText(Path.Combine(install, ReleaseStamp.FileName), Stamp("0.1.1", "deb"));
-        var deb = Path.Combine(_dir, "updates", "0.1.2", "onering_0.1.2_amd64.deb");
+        // Where the updater downloads to (<data>/updates/<version>/): only that folder is its own to clean up.
+        var deb = Path.Combine(_dir, "home", "updates", "0.1.2", "onering_0.1.2_amd64.deb");
         Directory.CreateDirectory(Path.GetDirectoryName(deb)!);
         File.WriteAllText(deb, "not really a package");
         var ran = new List<string>();

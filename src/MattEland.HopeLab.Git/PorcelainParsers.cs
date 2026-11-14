@@ -109,7 +109,7 @@ public static class WorktreeListParser
             var value = space < 0 ? null : line[(space + 1)..];
             switch (key)
             {
-                case "worktree": Flush(); path = value; break;
+                case "worktree": Flush(); path = value is null ? null : Unquote(value); break;
                 case "HEAD": sha = value; break;
                 case "branch": branch = value is not null && value.StartsWith("refs/heads/", StringComparison.Ordinal) ? value["refs/heads/".Length..] : value; break;
                 case "bare": bare = true; break;
@@ -120,5 +120,39 @@ public static class WorktreeListParser
         }
         Flush();
         return result;
+    }
+
+    /// <summary>
+    /// Undoes git's C-style quoting of a path (<c>core.quotePath</c>): a path with unusual characters, including any
+    /// non-ASCII ones by default, comes back as <c>"caf\303\251 dir"</c>. Escapes become their characters and octal byte
+    /// sequences are decoded as UTF-8. An unquoted path is returned as it is.
+    /// </summary>
+    public static string Unquote(string text)
+    {
+        if (text.Length < 2 || text[0] != '"' || text[^1] != '"') return text;
+        var bytes = new List<byte>(text.Length);
+        var end = text.Length - 1;
+        for (var i = 1; i < end; i++)
+        {
+            var c = text[i];
+            if (c != '\\' || i + 1 >= end)
+            {
+                bytes.AddRange(System.Text.Encoding.UTF8.GetBytes(c.ToString()));
+                continue;
+            }
+            var e = text[++i];
+            if (e is >= '0' and <= '7' && i + 2 < end && text[i + 1] is >= '0' and <= '7' && text[i + 2] is >= '0' and <= '7')
+            {
+                bytes.Add((byte)Convert.ToInt32(text.Substring(i, 3), 8));
+                i += 2;
+                continue;
+            }
+            bytes.Add(e switch
+            {
+                'a' => 7, 'b' => 8, 't' => 9, 'n' => 10, 'v' => 11, 'f' => 12, 'r' => 13,
+                _ => (byte)e, // \\ and \" (and anything unexpected) stand for themselves
+            });
+        }
+        return System.Text.Encoding.UTF8.GetString(bytes.ToArray());
     }
 }

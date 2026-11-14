@@ -26,6 +26,10 @@ def load(path):
 def install_settings(c):
     """What the installers need, also kept in the app folder (hopelab-install.json) so uninstalling works offline."""
     s = dict(c.get("install", {}))
+    # The app's identity, so an installer fetched by repository name still finds and names the install the same way
+    # setup.exe and the release's own copy of the script do.
+    s["id"] = c["id"]
+    s["name"] = c["name"]
     s["executable"] = c["desktop"]["executable"]
     s.setdefault("description", c.get("description") or c["name"])
     s.setdefault("categories", c.get("linux", {}).get("categories") or "Utility;")

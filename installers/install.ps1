@@ -52,6 +52,7 @@ if ($Repo) { $Name = '__'; $Id = '__' } elseif (-not $BakedRepo.StartsWith('__')
 if (-not $Repo) { throw 'Which app? Pass -Repo owner/name (QuantumHope/OneRing, QuantumHope/Hymnal).' }
 if ($Name.StartsWith('__')) { $Name = ($Repo -split '/')[1] }
 if ($Id.StartsWith('__')) { $Id = $Name.ToLowerInvariant() }
+$InstallDirGiven = [bool]$InstallDir
 if (-not $InstallDir) { $InstallDir = Join-Path $env:LOCALAPPDATA "Programs\$Name" }
 $Version = "$Version".TrimStart('v')
 $Rid = 'win-x64'
@@ -66,6 +67,9 @@ function Read-Settings($json) {
     if ($s.dataDirectoryVariable -and [Environment]::GetEnvironmentVariable($s.dataDirectoryVariable)) { $data = [Environment]::GetEnvironmentVariable($s.dataDirectoryVariable) }
     elseif ($s.dataDirectory) { $data = Join-Path $HOME $s.dataDirectory }
     [pscustomobject]@{
+        Id = $s.id
+        Name = $s.name
+        TokenVariable = $s.tokenVariable
         Exe = $(if ($s.executable) { $s.executable } else { $Name })
         AddToPath = [bool]$s.addToPath
         Processes = @($s.processes | Where-Object { $_ })
@@ -141,7 +145,9 @@ if (-not [Environment]::Is64BitOperatingSystem -or $env:PROCESSOR_ARCHITECTURE -
 # ---- a token, for a private repository ----
 $previous = Get-Settings
 $appVar = ($Id.ToUpperInvariant() -replace '-', '_') + '_GITHUB_TOKEN'
-$token = @([Environment]::GetEnvironmentVariable($appVar), $env:GH_TOKEN, $env:GITHUB_TOKEN) | Where-Object { $_ } | Select-Object -First 1
+# The app's configured variable first, when a previous install named one; then the derived name and the usual ones.
+$token = @($previous.TokenVariable, $appVar, 'GH_TOKEN', 'GITHUB_TOKEN') | Where-Object { $_ } |
+    ForEach-Object { [Environment]::GetEnvironmentVariable($_) } | Where-Object { $_ } | Select-Object -First 1
 $tokenFrom = 'environment'
 foreach ($f in @($(if ($previous.DataDir) { Join-Path $previous.DataDir 'github-token' }), (Join-Path $HOME ".$Id\github-token"))) {
     if (-not $token -and $f -and (Test-Path $f)) { $token = (Get-Content $f -Raw).Trim(); $tokenFrom = 'saved' }
@@ -216,8 +222,16 @@ try {
     $manifestAsset = $release.assets | Where-Object name -eq 'latest.json' | Select-Object -First 1
     if (-not $manifestAsset) { throw "Release $($release.tag_name) has no latest.json." }
     $manifest = (Get-OrThrow $manifestAsset.url 'application/octet-stream').Text | ConvertFrom-Json
-    if ($manifest.app) { $Name = $manifest.app }
     $settings = Read-Settings $manifest
+    # The release says who the app is. A script fetched by repository name guessed from the repository; if the release
+    # disagrees, use its name, so this updates the same install setup.exe or the release's own script made.
+    $canonical = if ($settings.Name) { $settings.Name } elseif ($manifest.app) { $manifest.app } else { $Name }
+    if ($canonical -ne $Name) {
+        $Name = $canonical
+        if (-not $InstallDirGiven) { $InstallDir = Join-Path $env:LOCALAPPDATA "Programs\$Name" }
+        $Shortcut = Join-Path ([Environment]::GetFolderPath('Programs')) "$Name.lnk"
+        $previous = Get-Settings
+    }
     $entry = $manifest.assets.$Rid
     if (-not $entry) { throw "Release $($release.tag_name) has no $Rid build." }
     $archiveAsset = $release.assets | Where-Object name -eq $entry.name | Select-Object -First 1
@@ -233,11 +247,16 @@ try {
     Expand-Archive $zip -DestinationPath $staged
     if (-not (Test-Path (Join-Path $staged "$($settings.Exe).exe"))) { throw "$($entry.name) is missing $($settings.Exe).exe." }
 
-    # ---- swap the folder in place ----
+    # ---- replace the files in place ----
+    # The folder itself never goes away: hooks, a login entry and shortcuts hold paths into it, and a setup.exe install
+    # keeps its uninstaller (unins*.exe, not in the zip) there. Each file being replaced is renamed into .update-old\
+    # first (Windows allows renaming a file in use, not overwriting it), then the new one moved in; a failure part way
+    # puts every old file back. The same scheme as the apps' own updater.
     $installedBefore = Test-Path (Join-Path $InstallDir 'release.json')
     $was = Stop-App $(if ($previous) { $previous } else { $settings })
-    New-Item -ItemType Directory -Force (Split-Path $InstallDir -Parent) | Out-Null
-    $old = "$InstallDir.old-" + (Get-Date -Format 'yyyyMMddHHmmss')
+    New-Item -ItemType Directory -Force $InstallDir | Out-Null
+    $aside = Join-Path $InstallDir (".update-old\install-" + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+    $moved = New-Object System.Collections.Generic.List[string]
     # What was stopped comes back if anything below fails, from whichever copy is in place by then.
     function Start-Previous {
         foreach ($p in $was.Running) {
@@ -245,30 +264,52 @@ try {
             if (Test-Path $exe) { Start-Process $exe -WorkingDirectory $InstallDir -WindowStyle Hidden }
         }
     }
-    for ($try = 1; ; $try++) {
-        try {
+    function Move-WithRetry($from, $to) {
+        for ($try = 1; ; $try++) {
             # A short-lived CLI run (a Claude Code hook, say) can hold a file for a moment; try again shortly.
-            if (Test-Path $InstallDir) { Rename-Item $InstallDir $old }
-            break
-        } catch {
-            if ($try -ge 10) {
-                Start-Previous
-                throw "Couldn't move the old $Name aside ($($_.Exception.Message)). Close $Name and try again."
-            }
-            Start-Sleep -Milliseconds 500
+            try { Move-Item -LiteralPath $from -Destination $to -Force; return }
+            catch { if ($try -ge 10) { throw }; Start-Sleep -Milliseconds 500 }
         }
     }
     try {
-        Move-Item $staged $InstallDir
+        $root = (Resolve-Path $staged).Path.TrimEnd('\')
+        foreach ($file in Get-ChildItem -LiteralPath $root -Recurse -File -Force) {
+            $rel = $file.FullName.Substring($root.Length + 1)
+            $target = Join-Path $InstallDir $rel
+            New-Item -ItemType Directory -Force (Split-Path $target -Parent) | Out-Null
+            if (Test-Path -LiteralPath $target) {
+                $old = Join-Path $aside $rel
+                New-Item -ItemType Directory -Force (Split-Path $old -Parent) | Out-Null
+                Move-WithRetry $target $old
+            }
+            $moved.Add($rel)
+            Move-WithRetry $file.FullName $target
+        }
     } catch {
-        # Roll back: drop whatever part of the new copy arrived, and put the old one back where everything expects it.
+        # Roll back: every new file out, every old one back where everything expects it.
         $why = $_.Exception.Message
-        if (Test-Path $InstallDir) { Remove-Item $InstallDir -Recurse -Force -ErrorAction SilentlyContinue }
-        if (Test-Path $old) { Rename-Item $old (Split-Path $InstallDir -Leaf) }
+        for ($i = $moved.Count - 1; $i -ge 0; $i--) {
+            $target = Join-Path $InstallDir $moved[$i]
+            $old = Join-Path $aside $moved[$i]
+            if (Test-Path -LiteralPath $old) {
+                if (Test-Path -LiteralPath $target) { Move-Item -LiteralPath $target "$target.failed-$i" -Force -ErrorAction SilentlyContinue }
+                Move-Item -LiteralPath $old $target -Force -ErrorAction SilentlyContinue
+            } else {
+                Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue
+            }
+        }
         Start-Previous
         throw "Couldn't put the new $Name in place ($why). The previous version is back as it was."
     }
-    Remove-Item $old -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item (Join-Path $InstallDir '.update-old') -Recurse -Force -ErrorAction SilentlyContinue   # in use? the app cleans up next start
+
+    # A setup.exe install: Apps & features shows the version now in the folder.
+    Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' -ErrorAction SilentlyContinue | ForEach-Object {
+        $entry = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
+        if ($entry.InstallLocation -and $entry.InstallLocation.TrimEnd('\') -ieq $InstallDir.TrimEnd('\')) {
+            Set-ItemProperty $_.PSPath -Name DisplayVersion -Value $manifest.version
+        }
+    }
 
     # ---- shortcut and PATH ----
     $exePath = Join-Path $InstallDir "$($settings.Exe).exe"

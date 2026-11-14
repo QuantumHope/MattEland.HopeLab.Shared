@@ -41,6 +41,19 @@ public sealed class GitHubReleases
 
     public string Repository => _repository;
 
+    /// <summary>How long a download may receive nothing before it is given up as stalled.</summary>
+    public TimeSpan ReadIdleTimeout { get; init; } = TimeSpan.FromSeconds(60);
+
+    private const string NoReleasesVisible = "No releases visible for";
+    private const string TokenRejected = "GitHub rejected the token";
+
+    /// <summary>
+    /// Whether a failure is about access (a private repository with no token, a rejected token) rather than the network
+    /// or GitHub being unavailable: the first won't fix itself and is worth telling someone about; the second is.
+    /// </summary>
+    public static bool IsAccessProblem(string? error) =>
+        error is not null && (error.StartsWith(NoReleasesVisible, StringComparison.Ordinal) || error.StartsWith(TokenRejected, StringComparison.Ordinal));
+
     /// <summary>The release GitHub marks Latest (never a draft or pre-release).</summary>
     public async Task<Result<GitHubRelease>> LatestAsync(CancellationToken ct = default)
     {
@@ -106,9 +119,18 @@ public sealed class GitHubReleases
             {
                 var buffer = new byte[81920];
                 long total = 0;
-                int read;
-                while ((read = await source.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
+                while (true)
                 {
+                    // HttpClient.Timeout stops at the headers; a body that stalls would wait for ever without this.
+                    using var idle = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    idle.CancelAfter(ReadIdleTimeout);
+                    int read;
+                    try { read = await source.ReadAsync(buffer, idle.Token).ConfigureAwait(false); }
+                    catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                    {
+                        return Result<string>.Fail($"Downloading {asset.Name} stalled (nothing for {ReadIdleTimeout.TotalSeconds:0} s). Try again.");
+                    }
+                    if (read == 0) break;
                     await file.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
                     total += read;
                     progress?.Report(total);
@@ -161,9 +183,9 @@ public sealed class GitHubReleases
     internal string Explain(HttpStatusCode status, bool hadToken) => status switch
     {
         HttpStatusCode.NotFound when !hadToken =>
-            $"No releases visible for {_repository}. It is private: save a GitHub token that can read it, or sign in with `gh auth login`.",
+            $"{NoReleasesVisible} {_repository}. It is private: save a GitHub token that can read it, or sign in with `gh auth login`.",
         HttpStatusCode.NotFound => $"{_repository} has no published release yet, or this token can't read it.",
-        HttpStatusCode.Unauthorized => "GitHub rejected the token: it may have expired or been revoked. Save a new one, or sign in with `gh auth login`.",
+        HttpStatusCode.Unauthorized => $"{TokenRejected}: it may have expired or been revoked. Save a new one, or sign in with `gh auth login`.",
         HttpStatusCode.Forbidden or HttpStatusCode.TooManyRequests =>
             "GitHub refused the request (rate limit or permissions). Try again later, or sign in with `gh auth login`.",
         _ => $"GitHub answered {(int)status} {status}.",
