@@ -1,5 +1,6 @@
 # Build and test every pull request and push. Every push to main that passes also publishes the packages to nuget.org
-# as MattEland.HopeLab.*.<major>.<minor>.<commits on main> (needs the NUGET_API_KEY secret).
+# as MattEland.HopeLab.*.<major>.<minor>.<commits on main>, through nuget.org Trusted Publishing (no stored key; see the
+# publish job).
 name: CI
 
 on:
@@ -83,10 +84,17 @@ jobs:
           grep -q 'REPO="o/r"' dist/install.sh
           grep -q "BakedRepo = 'o/r'" dist/install.ps1
 
+  # Trusted Publishing: no stored API key. GitHub issues this job an OIDC token, NuGet/login exchanges it for an API key
+  # that lasts an hour, and nuget.org accepts it because a Trusted Publishing policy on the package owner's account
+  # names this repository and this workflow file (ci.yml). A manual run on main publishes too (after setting the policy
+  # up, say); re-running a commit is harmless, since --skip-duplicate skips a version that is already there.
   publish:
     needs: [test, installers]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # the OIDC token NuGet/login trades for a temporary API key
     steps:
       - uses: actions/checkout@v4
         with:
@@ -101,13 +109,15 @@ jobs:
           echo "VERSION=$version" >> "$GITHUB_ENV"
           dotnet pack MattEland.HopeLab.Shared.slnx -c Release -p:Version="$version" -o artifacts
           ls artifacts
+      - name: NuGet login (OIDC to a temporary API key)
+        id: login
+        uses: NuGet/login@v1
+        with:
+          # The nuget.org profile name that owns the packages and the Trusted Publishing policy (not an email address).
+          # A repository variable NUGET_USER overrides it.
+          user: ${{ vars.NUGET_USER || 'MattEland' }}
       - name: Push to nuget.org
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
-          if [ -z "$NUGET_API_KEY" ]; then
-            echo "::warning::No NUGET_API_KEY secret: packages built but not published."
-            exit 0
-          fi
-          dotnet nuget push "artifacts/*.nupkg" --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
+          dotnet nuget push "artifacts/*.nupkg" --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" \
+            --source https://api.nuget.org/v3/index.json --skip-duplicate
           echo "Published MattEland.HopeLab.* $VERSION to nuget.org" >> "$GITHUB_STEP_SUMMARY"

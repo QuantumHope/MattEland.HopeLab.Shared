@@ -13,6 +13,7 @@ public sealed class FakeTokenStore : ITokenStore
     public string Description => "the test's credential store";
 }
 
+[Collection(EnvironmentCollection.Name)]
 public sealed class TokenStoreAndAptTests : IDisposable
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "hopelab-store-" + Guid.NewGuid().ToString("N")[..8]);
