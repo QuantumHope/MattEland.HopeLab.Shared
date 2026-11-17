@@ -75,6 +75,25 @@ To try a change in an app before it's published, pack with a higher version into
 package source in the app (a `nuget.config` you don't commit), or temporarily swap the `PackageReference` for a
 `ProjectReference` into a checkout of this repository.
 
+## Publishing
+
+Every push to `main` that passes CI packs `0.1.<commits on main>` and pushes it to nuget.org with
+[Trusted Publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing): no API key is stored anywhere.
+The publish job gets a GitHub OIDC token, `NuGet/login` trades it for an API key that lasts an hour, and nuget.org
+accepts it because of a Trusted Publishing policy on the owning account (nuget.org → your profile → **Trusted
+Publishing**):
+
+| Field | Value |
+|---|---|
+| Repository Owner | `QuantumHope` |
+| Repository | `MattEland.HopeLab.Shared` |
+| Workflow File | `ci.yml` |
+| Environment | (empty) |
+
+The job logs in as the nuget.org profile `MattEland`; a repository variable `NUGET_USER` overrides it. To publish
+again by hand (after setting the policy up, say), run the CI workflow on `main` from the Actions tab; versions that
+already exist are skipped.
+
 ## Licence
 
 MIT
