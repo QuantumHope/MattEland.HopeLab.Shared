@@ -124,6 +124,7 @@ internal sealed class FakeGitHub : HttpMessageHandler
     }
 }
 
+[Collection(EnvironmentCollection.Name)]
 public sealed class GitHubReleasesTests : IDisposable
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "onering-updates-" + Guid.NewGuid().ToString("N")[..8]);
@@ -506,6 +507,7 @@ public sealed class InstallSwapTests : IDisposable
     }
 }
 
+[Collection(EnvironmentCollection.Name)]
 public class GitHubTokenTests
 {
     [Fact]
