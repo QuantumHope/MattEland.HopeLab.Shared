@@ -287,6 +287,24 @@ public sealed class GitHubReleasesTests : IDisposable
     }
 
     [Fact]
+    public void The_update_lock_file_is_kept_so_every_process_locks_the_same_file()
+    {
+        // Deleting it on release would let a process that opened the old file lock that orphan while another creates and
+        // locks a new one under the same name (flock on Linux and macOS), so both would think they held the lock.
+        var updater = TestApp.Updater(Path.Combine(_dir, "home"), _dir);
+        string path;
+        using (var first = (FileStream?)updater.TryLock())
+        {
+            Assert.NotNull(first);
+            path = first.Name;
+        }
+        Assert.True(File.Exists(path));
+        using var second = updater.TryLock();
+        Assert.NotNull(second);
+        Assert.Null(TestApp.Updater(Path.Combine(_dir, "home"), _dir).TryLock());
+    }
+
+    [Fact]
     public async Task A_cancelled_install_stops_nothing()
     {
         var install = Path.Combine(_dir, "install");
