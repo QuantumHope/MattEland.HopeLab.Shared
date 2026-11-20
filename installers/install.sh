@@ -182,10 +182,15 @@ if [ -z "$token" ] && command -v gh >/dev/null 2>&1; then
 fi
 
 api() { # api <url> <accept> <output>
-  local auth=()
-  [ -n "$token" ] && auth=(-H "Authorization: Bearer $token")
+  # The token goes to curl on stdin (-H @-), never on its command line: any local user can read another user's command
+  # lines (ps, /proc/<pid>/cmdline) while a download runs. printf is a shell builtin, so it never shows there either.
   # curl drops the Authorization header when GitHub redirects an asset to its storage host, as it should.
-  curl -fsSL "${auth[@]}" -H "Accept: $2" -H "X-GitHub-Api-Version: 2022-11-28" -o "$3" "$1"
+  if [ -n "$token" ]; then
+    printf 'Authorization: Bearer %s\n' "$token" |
+      curl -fsSL -H @- -H "Accept: $2" -H "X-GitHub-Api-Version: 2022-11-28" -o "$3" "$1"
+  else
+    curl -fsSL -H "Accept: $2" -H "X-GitHub-Api-Version: 2022-11-28" -o "$3" "$1"
+  fi
 }
 
 if [ -n "$VERSION" ]; then release_url="https://api.github.com/repos/$REPO/releases/tags/v$VERSION"

@@ -206,8 +206,11 @@ public sealed class AppUpdater
         try
         {
             Directory.CreateDirectory(_options.UpdatesDirectory);
+            // The file is left in place, not deleted on close. On Linux and macOS the lock is an flock on the open file, and
+            // .NET opens then locks in two steps: a process that opened the old file just before it was deleted could lock
+            // that orphan while the next one creates and locks a new file under the same name, and both would "hold" it.
             return new FileStream(Path.Combine(_options.UpdatesDirectory, "update.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite,
-                FileShare.None, 1, FileOptions.DeleteOnClose);
+                FileShare.None, 1, FileOptions.None);
         }
         catch (IOException) { return null; }
         catch (UnauthorizedAccessException) { return null; }
