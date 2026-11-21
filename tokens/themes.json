@@ -1,0 +1,30 @@
+{
+  "description": "The shared themes in catalogue order, and the one apps start on.",
+  "default": "dark",
+  "themes": [
+    "light",
+    "hc-light",
+    "glados",
+    "clippy",
+    "samantha",
+    "gerty",
+    "dark",
+    "hc-dark",
+    "shodan",
+    "muther",
+    "hal",
+    "mechanicus",
+    "cortana",
+    "helios",
+    "daedalus",
+    "icarus",
+    "eliza",
+    "lcars",
+    "mcp",
+    "skynet",
+    "jarvis",
+    "wopr",
+    "kitt",
+    "cylon"
+  ]
+}

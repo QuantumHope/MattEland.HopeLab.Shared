@@ -4,8 +4,14 @@
     <Project Path="src/MattEland.HopeLab.Git/MattEland.HopeLab.Git.csproj" />
     <Project Path="src/MattEland.HopeLab.Updates/MattEland.HopeLab.Updates.csproj" />
     <Project Path="src/MattEland.HopeLab.Updates.ReactiveUI/MattEland.HopeLab.Updates.ReactiveUI.csproj" />
+    <Project Path="src/MattEland.HopeLab.Themes.Tokens/MattEland.HopeLab.Themes.Tokens.csproj" />
+    <Project Path="src/MattEland.HopeLab.Themes/MattEland.HopeLab.Themes.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/ThemeTokens/ThemeTokens.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/MattEland.HopeLab.Tests/MattEland.HopeLab.Tests.csproj" />
+    <Project Path="tests/MattEland.HopeLab.Themes.Tests/MattEland.HopeLab.Themes.Tests.csproj" />
   </Folder>
 </Solution>

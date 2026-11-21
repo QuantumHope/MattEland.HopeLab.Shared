@@ -12,6 +12,7 @@ dotnet test MattEland.HopeLab.Shared.slnx
 dotnet pack MattEland.HopeLab.Shared.slnx -c Release -o artifacts
 bash -n installers/install.sh && bash -n installers/linux/build-deb.sh
 python3 installers/release/hopelab_release.py   # usage
+dotnet run --project tools/ThemeTokens -- generate   # after editing tokens/
 ```
 
 ## Rules
@@ -29,4 +30,7 @@ python3 installers/release/hopelab_release.py   # usage
   `__HOPELAB_NAME__`, `__HOPELAB_ID__` are filled in for each release's attached copy.
 - **The install folder never moves**, on any path (script, setup, in-app update): hooks and login entries hold absolute
   paths into it.
+- **Themes come from `tokens/`.** Edit `tokens/contract.json` or `tokens/themes/*.json` and run the generator; never
+  edit `tokens/css/` or `src/MattEland.HopeLab.Themes/Themes/` by hand (a test fails when they drift). Renaming or
+  removing a token, or a theme id, is a breaking change for every app that uses it. See `tokens/README.md`.
 - Tests that touch files use temp folders; nothing writes to the real profile, PATH or registry.

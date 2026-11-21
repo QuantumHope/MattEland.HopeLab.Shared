@@ -9,8 +9,10 @@ Shared .NET libraries and release tooling for the HopeLab desktop apps ([OneRing
 | `MattEland.HopeLab.Git` | The git CLI wrapper: porcelain v2 status, worktrees, merge preview, commit graph layout, fetch/pull/rebase, per-repo write lock |
 | `MattEland.HopeLab.Updates` | Updates from GitHub releases: `latest.json`, version checks, GitHub tokens for private repos, verified downloads, in-place file swap with rollback, Debian-package installs (`AppUpdater`, `AppUpdateService`) |
 | `MattEland.HopeLab.Updates.ReactiveUI` | `UpdatesViewModel`: the check timer, banner, tray text, Settings status and token handling every app shows the same way |
+| `MattEland.HopeLab.Themes` | The shared themes for Avalonia: one resource dictionary per theme (`Lab.*` keys), `ThemeCatalog`, and the faces they use. Generated from [`tokens/`](tokens/README.md) |
+| `MattEland.HopeLab.Themes.Tokens` | The theme token model: the contract, theme files, contrast and ΔE maths, and the CSS and Avalonia generators |
 
-All target .NET 10. `Common`, `Git` and `Updates` are NativeAOT-compatible. Versions are `0.1.<commits on main>`:
+All target .NET 10. `Common`, `Git`, `Updates` and both theme packages are NativeAOT-compatible. Versions are `0.1.<commits on main>`:
 every merge to `main` publishes.
 
 | Release tooling | What it is |
