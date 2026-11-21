@@ -101,13 +101,19 @@ public sealed class CssWriter(TokenContract contract)
         return x.ToString();
     }
 
-    /// <summary>An <c>@import</c> of the base block and every theme, in catalogue order.</summary>
-    public static string WriteIndex(TokenSet set)
+    /// <summary>
+    /// An <c>@import</c> of the base block, the default theme, and then every other theme in catalogue order. The default
+    /// theme comes first because its block is also on <c>:root</c>, which is as specific as <c>[data-theme="id"]</c>:
+    /// imported after another theme, its values would win on the root element whichever theme is chosen.
+    /// </summary>
+    public static string WriteIndex(TokenSet set, string defaultTheme)
     {
         var x = new StringBuilder();
-        x.Append("/* ").AppendFormat(Banner, "themes.json").AppendLine(" */");
+        x.Append("/* ").AppendFormat(Banner, "themes.json").AppendLine();
+        x.AppendLine("   The default theme comes first: its block is also on :root, so imported later it would win over the chosen theme. */");
         x.AppendLine("@import \"./base.css\";");
-        foreach (var t in set.Themes) x.Append("@import \"./").Append(t.Id).AppendLine(".css\";");
+        foreach (var t in set.Themes.OrderBy(t => t.Id == defaultTheme ? 0 : 1))
+            x.Append("@import \"./").Append(t.Id).AppendLine(".css\";");
         return x.ToString();
     }
 

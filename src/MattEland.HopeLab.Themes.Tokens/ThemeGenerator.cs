@@ -30,7 +30,7 @@ public static class ThemeGenerator
         var css = new CssWriter(set.Contract);
         files[$"{CssFolder}/base.css"] = css.WriteBase();
         foreach (var t in set.Themes) files[$"{CssFolder}/{t.Id}.css"] = css.WriteTheme(t, t.Id == defaultTheme);
-        files[$"{CssFolder}/index.css"] = CssWriter.WriteIndex(set);
+        files[$"{CssFolder}/index.css"] = CssWriter.WriteIndex(set, defaultTheme);
 
         var axaml = new AxamlWriter(set.Contract, $"avares://{AvaloniaAssembly}/Assets/Fonts", DictionaryNamespace);
         foreach (var t in set.Themes)

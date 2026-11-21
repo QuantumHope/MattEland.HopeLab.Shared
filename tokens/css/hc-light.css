@@ -17,7 +17,7 @@
   --accent-purple:             #6A1B9A;
   --accent-blue:               #003C9E;
   --accent-green:              #0A5C2B;
-  --accent-error:              #A80000;
+  --accent-error:              #A00000;
   --accent-orange:             #7A3A00;
 
   /* ink */
@@ -26,7 +26,7 @@
 
   /* persona */
   --surface-chrome:            #1A1530;
-  --surface-live:              #35F5A0;
+  --surface-live:              #07884F;
   --surface-mane:              #3B3260;
   --surface-hot:               #FFF4D2;
   --surface-signature:         #1A1530;
@@ -35,7 +35,7 @@
   --text-primary-dark:         #000000;
   --text-secondary-dark:       #1F1F1F;
   --text-machine:              #2B2B2B;
-  --text-disabled:             #525252;
+  --text-disabled:             #4D4D4D;
 
   /* border */
   --border-header:             #000000;

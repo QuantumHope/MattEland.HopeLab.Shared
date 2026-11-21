@@ -11,73 +11,73 @@
   <SolidColorBrush x:Key="Lab.Surface.Canvas" Color="{StaticResource Lab.Surface.Canvas.Color}" />
   <Color x:Key="Lab.Surface.Panel.Color">#FFFFFFFF</Color>
   <SolidColorBrush x:Key="Lab.Surface.Panel" Color="{StaticResource Lab.Surface.Panel.Color}" />
-  <Color x:Key="Lab.Surface.Elevated.Color">#FFF0EBF8</Color>
+  <Color x:Key="Lab.Surface.Elevated.Color">#FFF3EFFB</Color>
   <SolidColorBrush x:Key="Lab.Surface.Elevated" Color="{StaticResource Lab.Surface.Elevated.Color}" />
-  <Color x:Key="Lab.Surface.Header.Color">#FFEDE5F8</Color>
+  <Color x:Key="Lab.Surface.Header.Color">#FFF4F0FC</Color>
   <SolidColorBrush x:Key="Lab.Surface.Header" Color="{StaticResource Lab.Surface.Header.Color}" />
-  <Color x:Key="Lab.Surface.HeaderEnd.Color">#FFE8DEF5</Color>
+  <Color x:Key="Lab.Surface.HeaderEnd.Color">#FFF0EBFA</Color>
   <SolidColorBrush x:Key="Lab.Surface.HeaderEnd" Color="{StaticResource Lab.Surface.HeaderEnd.Color}" />
-  <Color x:Key="Lab.Surface.Sidebar.Color">#FFF8F4FF</Color>
+  <Color x:Key="Lab.Surface.Sidebar.Color">#FFFBF9FF</Color>
   <SolidColorBrush x:Key="Lab.Surface.Sidebar" Color="{StaticResource Lab.Surface.Sidebar.Color}" />
 
   <!-- accent -->
-  <Color x:Key="Lab.Accent.Primary.Color">#FFC30D57</Color>
+  <Color x:Key="Lab.Accent.Primary.Color">#FF910A41</Color>
   <SolidColorBrush x:Key="Lab.Accent.Primary" Color="{StaticResource Lab.Accent.Primary.Color}" />
-  <Color x:Key="Lab.Accent.Highlight.Color">#FF686606</Color>
+  <Color x:Key="Lab.Accent.Highlight.Color">#FF4C4B04</Color>
   <SolidColorBrush x:Key="Lab.Accent.Highlight" Color="{StaticResource Lab.Accent.Highlight.Color}" />
-  <Color x:Key="Lab.Accent.Link.Color">#FF9440A9</Color>
+  <Color x:Key="Lab.Accent.Link.Color">#FF6C2F7C</Color>
   <SolidColorBrush x:Key="Lab.Accent.Link" Color="{StaticResource Lab.Accent.Link.Color}" />
-  <Color x:Key="Lab.Accent.Info.Color">#FF135FCD</Color>
+  <Color x:Key="Lab.Accent.Info.Color">#FF0E4596</Color>
   <SolidColorBrush x:Key="Lab.Accent.Info" Color="{StaticResource Lab.Accent.Info.Color}" />
-  <Color x:Key="Lab.Accent.Success.Color">#FF14733B</Color>
+  <Color x:Key="Lab.Accent.Success.Color">#FF0F542B</Color>
   <SolidColorBrush x:Key="Lab.Accent.Success" Color="{StaticResource Lab.Accent.Success.Color}" />
-  <Color x:Key="Lab.Accent.Error.Color">#FFC90D0D</Color>
+  <Color x:Key="Lab.Accent.Error.Color">#FF950A0A</Color>
   <SolidColorBrush x:Key="Lab.Accent.Error" Color="{StaticResource Lab.Accent.Error.Color}" />
-  <Color x:Key="Lab.Accent.Warning.Color">#FF98520B</Color>
+  <Color x:Key="Lab.Accent.Warning.Color">#FF703C08</Color>
   <SolidColorBrush x:Key="Lab.Accent.Warning" Color="{StaticResource Lab.Accent.Warning.Color}" />
 
   <!-- ink -->
-  <Color x:Key="Lab.Ink.Icon.Color">#FFF4F0FF</Color>
+  <Color x:Key="Lab.Ink.Icon.Color">#FFFFFFFF</Color>
   <SolidColorBrush x:Key="Lab.Ink.Icon" Color="{StaticResource Lab.Ink.Icon.Color}" />
   <Color x:Key="Lab.Ink.Overlay.Color">#FF1C1228</Color>
   <SolidColorBrush x:Key="Lab.Ink.Overlay" Color="{StaticResource Lab.Ink.Overlay.Color}" />
 
   <!-- persona -->
-  <Color x:Key="Lab.Persona.Face.Color">#FFD8F2EA</Color>
+  <Color x:Key="Lab.Persona.Face.Color">#FF2A2145</Color>
   <SolidColorBrush x:Key="Lab.Persona.Face" Color="{StaticResource Lab.Persona.Face.Color}" />
-  <Color x:Key="Lab.Persona.Live.Color">#FF35F5A0</Color>
+  <Color x:Key="Lab.Persona.Live.Color">#FF07844D</Color>
   <SolidColorBrush x:Key="Lab.Persona.Live" Color="{StaticResource Lab.Persona.Live.Color}" />
   <Color x:Key="Lab.Persona.Mane.Color">#FF3B3260</Color>
   <SolidColorBrush x:Key="Lab.Persona.Mane" Color="{StaticResource Lab.Persona.Mane.Color}" />
   <Color x:Key="Lab.Persona.Hot.Color">#FFFFF4D2</Color>
   <SolidColorBrush x:Key="Lab.Persona.Hot" Color="{StaticResource Lab.Persona.Hot.Color}" />
-  <Color x:Key="Lab.Persona.Signature.Color">#FFD8F2EA</Color>
+  <Color x:Key="Lab.Persona.Signature.Color">#FF2A2145</Color>
   <SolidColorBrush x:Key="Lab.Persona.Signature" Color="{StaticResource Lab.Persona.Signature.Color}" />
 
   <!-- text -->
   <Color x:Key="Lab.Text.Primary.Color">#FF1C1228</Color>
   <SolidColorBrush x:Key="Lab.Text.Primary" Color="{StaticResource Lab.Text.Primary.Color}" />
-  <Color x:Key="Lab.Text.Secondary.Color">#FF5A4E7C</Color>
+  <Color x:Key="Lab.Text.Secondary.Color">#FF4E436B</Color>
   <SolidColorBrush x:Key="Lab.Text.Secondary" Color="{StaticResource Lab.Text.Secondary.Color}" />
-  <Color x:Key="Lab.Text.Mono.Color">#FF6B5F8A</Color>
+  <Color x:Key="Lab.Text.Mono.Color">#FF4D4463</Color>
   <SolidColorBrush x:Key="Lab.Text.Mono" Color="{StaticResource Lab.Text.Mono.Color}" />
-  <Color x:Key="Lab.Text.Disabled.Color">#FFA898C8</Color>
+  <Color x:Key="Lab.Text.Disabled.Color">#FF7E67AE</Color>
   <SolidColorBrush x:Key="Lab.Text.Disabled" Color="{StaticResource Lab.Text.Disabled.Color}" />
 
   <!-- border -->
-  <Color x:Key="Lab.Border.Header.Color">#4CC490D1</Color>
+  <Color x:Key="Lab.Border.Header.Color">#471C1228</Color>
   <SolidColorBrush x:Key="Lab.Border.Header" Color="{StaticResource Lab.Border.Header.Color}" />
-  <Color x:Key="Lab.Border.Subtle.Color">#14000000</Color>
+  <Color x:Key="Lab.Border.Subtle.Color">#381C1228</Color>
   <SolidColorBrush x:Key="Lab.Border.Subtle" Color="{StaticResource Lab.Border.Subtle.Color}" />
-  <Color x:Key="Lab.Border.Input.Color">#80C490D1</Color>
+  <Color x:Key="Lab.Border.Input.Color">#FF7A5A99</Color>
   <SolidColorBrush x:Key="Lab.Border.Input" Color="{StaticResource Lab.Border.Input.Color}" />
-  <Color x:Key="Lab.Border.Focus.Color">#E6F9A8C9</Color>
+  <Color x:Key="Lab.Border.Focus.Color">#FF910A41</Color>
   <SolidColorBrush x:Key="Lab.Border.Focus" Color="{StaticResource Lab.Border.Focus.Color}" />
 
   <!-- gradient -->
   <LinearGradientBrush x:Key="Lab.Gradient.Header" StartPoint="14.6%,14.6%" EndPoint="85.4%,85.4%">
-    <GradientStop Offset="0" Color="#FFEDE5F8" />
-    <GradientStop Offset="1" Color="#FFE8DEF5" />
+    <GradientStop Offset="0" Color="#FFF4F0FC" />
+    <GradientStop Offset="1" Color="#FFF0EBFA" />
   </LinearGradientBrush>
   <LinearGradientBrush x:Key="Lab.Gradient.Sidebar" StartPoint="50%,0%" EndPoint="50%,100%">
     <GradientStop Offset="0" Color="#FFFFFFFF" />
@@ -109,9 +109,9 @@
   <SolidColorBrush x:Key="Lab.Viz.Series3" Color="{StaticResource Lab.Viz.Series3.Color}" />
   <Color x:Key="Lab.Viz.Series4.Color">#FFA06A00</Color>
   <SolidColorBrush x:Key="Lab.Viz.Series4" Color="{StaticResource Lab.Viz.Series4.Color}" />
-  <Color x:Key="Lab.Viz.Grid.Color">#475A4E7C</Color>
+  <Color x:Key="Lab.Viz.Grid.Color">#4C4E436B</Color>
   <SolidColorBrush x:Key="Lab.Viz.Grid" Color="{StaticResource Lab.Viz.Grid.Color}" />
-  <Color x:Key="Lab.Viz.Axis.Color">#995A4E7C</Color>
+  <Color x:Key="Lab.Viz.Axis.Color">#E64E436B</Color>
   <SolidColorBrush x:Key="Lab.Viz.Axis" Color="{StaticResource Lab.Viz.Axis.Color}" />
   <Color x:Key="Lab.Viz.Heat1.Color">#FF2A6BB8</Color>
   <SolidColorBrush x:Key="Lab.Viz.Heat1" Color="{StaticResource Lab.Viz.Heat1.Color}" />
@@ -131,13 +131,13 @@
   <FontFamily x:Key="Lab.Font.Surface">avares://MattEland.HopeLab.Themes/Assets/Fonts#JetBrains Mono, Fira Code, Cascadia Code, monospace</FontFamily>
 
   <!-- Derived: the primary accent under the pointer, washes behind badges and banners, the dialog scrim -->
-  <SolidColorBrush x:Key="Lab.Accent.Primary.Hot" Color="#FF9C0A46" />
-  <SolidColorBrush x:Key="Lab.Wash.Primary" Color="#29C30D57" />
-  <SolidColorBrush x:Key="Lab.Wash.Error" Color="#29C90D0D" />
-  <SolidColorBrush x:Key="Lab.Wash.Link" Color="#299440A9" />
-  <SolidColorBrush x:Key="Lab.Wash.Warning" Color="#2998520B" />
+  <SolidColorBrush x:Key="Lab.Accent.Primary.Hot" Color="#FF740834" />
+  <SolidColorBrush x:Key="Lab.Wash.Primary" Color="#29910A41" />
+  <SolidColorBrush x:Key="Lab.Wash.Error" Color="#29950A0A" />
+  <SolidColorBrush x:Key="Lab.Wash.Link" Color="#296C2F7C" />
+  <SolidColorBrush x:Key="Lab.Wash.Warning" Color="#29703C08" />
   <SolidColorBrush x:Key="Lab.Wash.Hover" Color="#0A1C1228" />
-  <SolidColorBrush x:Key="Lab.Wash.Selected" Color="#1FC30D57" />
+  <SolidColorBrush x:Key="Lab.Wash.Selected" Color="#1F910A41" />
   <SolidColorBrush x:Key="Lab.Scrim" Color="#661C1228" />
   <!-- Derived: chart slots 5 to 7 and Other, which the tokens don't cover, at 3:1 on the panel -->
   <SolidColorBrush x:Key="Lab.Viz.Series5" Color="#FFC23F72" />
@@ -145,13 +145,13 @@
   <SolidColorBrush x:Key="Lab.Viz.Series7" Color="#FF6B5BD6" />
   <SolidColorBrush x:Key="Lab.Viz.Other" Color="#FF6E6C80" />
   <!-- Derived: Fluent's palette, for apps that build FluentTheme from the theme -->
-  <Color x:Key="Lab.Fluent.Accent">#FFC30D57</Color>
+  <Color x:Key="Lab.Fluent.Accent">#FF910A41</Color>
   <Color x:Key="Lab.Fluent.Region">#FFF4F0FF</Color>
   <Color x:Key="Lab.Fluent.BaseHigh">#FF1C1228</Color>
-  <Color x:Key="Lab.Fluent.ChromeMedium">#FFF0EBF8</Color>
+  <Color x:Key="Lab.Fluent.ChromeMedium">#FFF3EFFB</Color>
   <Color x:Key="Lab.Fluent.ChromeMediumLow">#FFFFFFFF</Color>
-  <Color x:Key="Lab.Fluent.ChromeLow">#FFEDE5F8</Color>
-  <Color x:Key="Lab.Fluent.ErrorText">#FFC90D0D</Color>
+  <Color x:Key="Lab.Fluent.ChromeLow">#FFF4F0FC</Color>
+  <Color x:Key="Lab.Fluent.ErrorText">#FF950A0A</Color>
 
   <!-- Type scale (size, weight, and line height in pixels), spacing and radii -->
   <x:Double x:Key="Lab.Type.Display.Size">28</x:Double>

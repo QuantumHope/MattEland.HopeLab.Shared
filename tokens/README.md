@@ -108,14 +108,22 @@ dotnet run --project tools/ThemeTokens -- generate          # write tokens/css/ 
 dotnet run --project tools/ThemeTokens -- generate --check  # fail if they're out of date (the tests check this too)
 ```
 
-The themes were seeded from the web client's CSS. Until it reads these files, its CSS can be compared, value by
-value, with what the generator writes (`import` takes the same options and rewrites `themes/` from that CSS):
+The themes were seeded from CORA's CSS, and CORA now reads the generated CSS from the package (below), so a change to a
+theme is made here. To bring a change made in a CORA checkout back (as CORA's projector-safe Light was), compare and then
+import (`import` takes the same options plus `--registry <themes.ts>`, and rewrites `themes/` from that CSS):
 
 ```bash
-web=<web client checkout>/apps/cora-client/src
+web=<CORA checkout>/apps/cora-client/src
 dotnet run --project tools/ThemeTokens -- compare --colors $web/tokens/colors.css --themes $web/tokens/themes \
   --typography $web/tokens/typography.css --spacing $web/tokens/spacing.css
 ```
+
+## Using the themes on the web
+
+The `MattEland.HopeLab.Themes` package carries the generated CSS under `css/` (`index.css` imports `base.css` and every
+theme). A .NET project that references the package gets nothing copied; a web client takes the files out of the package
+at a pinned version. CORA does this with `npm run themes:sync`, which downloads the package from nuget.org, copies
+`css/` into its source and records the version and each file's hash, so its build never reaches the network.
 
 ## Known gaps in Avalonia
 

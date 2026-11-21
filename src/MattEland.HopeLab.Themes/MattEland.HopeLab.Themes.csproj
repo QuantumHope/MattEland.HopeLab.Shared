@@ -2,7 +2,7 @@
   <PropertyGroup>
     <IsAotCompatible>true</IsAotCompatible>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
-    <Description>The HopeLab themes for Avalonia: one resource dictionary per shared theme (generated from the token files), the theme catalogue, and the faces the themes use (SIL Open Font License).</Description>
+    <Description>The HopeLab themes for Avalonia: one resource dictionary per shared theme (generated from the token files), the theme catalogue, the faces the themes use (SIL Open Font License), and the same themes as CSS custom properties under css/ for web clients.</Description>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" />
@@ -10,5 +10,10 @@
   <ItemGroup>
     <AvaloniaResource Include="Assets\Fonts\*.ttf" />
     <None Include="Assets\Fonts\LICENSE-OFL.txt" Pack="true" PackagePath="\fonts\" />
+  </ItemGroup>
+  <!-- The same themes as CSS, for web clients (CORA reads them from here with its themes:sync script). Not content
+       files: nothing is copied into a .NET project that references the package. -->
+  <ItemGroup>
+    <None Include="..\..\tokens\css\*.css" Pack="true" PackagePath="css" Visible="false" />
   </ItemGroup>
 </Project>

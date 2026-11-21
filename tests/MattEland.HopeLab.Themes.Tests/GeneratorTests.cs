@@ -49,6 +49,18 @@ public sealed class GeneratorTests
     }
 
     [Fact]
+    public void The_index_imports_the_default_theme_before_any_other()
+    {
+        // The default block is also on :root, which is as specific as [data-theme="id"], so the later import wins on the
+        // root element: imported after Light, Dark's values would replace Light's whichever theme was chosen.
+        var imports = System.Text.RegularExpressions.Regex.Matches(Output.Files[$"{ThemeGenerator.CssFolder}/index.css"], @"@import ""\./([\w-]+)\.css"";")
+            .Select(m => m.Groups[1].Value).ToList();
+        Assert.Equal("base", imports[0]);
+        Assert.Equal(ThemeGenerator.DefaultTheme(Repo.Tokens), imports[1]);
+        Assert.Equal(Repo.Set.Themes.Select(t => t.Id).Order(), imports.Skip(1).Order());
+    }
+
+    [Fact]
     public void References_become_var_in_CSS()
     {
         var contract = new TokenContract([

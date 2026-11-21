@@ -31,7 +31,7 @@
   <SolidColorBrush x:Key="Lab.Accent.Info" Color="{StaticResource Lab.Accent.Info.Color}" />
   <Color x:Key="Lab.Accent.Success.Color">#FF0A5C2B</Color>
   <SolidColorBrush x:Key="Lab.Accent.Success" Color="{StaticResource Lab.Accent.Success.Color}" />
-  <Color x:Key="Lab.Accent.Error.Color">#FFA80000</Color>
+  <Color x:Key="Lab.Accent.Error.Color">#FFA00000</Color>
   <SolidColorBrush x:Key="Lab.Accent.Error" Color="{StaticResource Lab.Accent.Error.Color}" />
   <Color x:Key="Lab.Accent.Warning.Color">#FF7A3A00</Color>
   <SolidColorBrush x:Key="Lab.Accent.Warning" Color="{StaticResource Lab.Accent.Warning.Color}" />
@@ -45,7 +45,7 @@
   <!-- persona -->
   <Color x:Key="Lab.Persona.Face.Color">#FF1A1530</Color>
   <SolidColorBrush x:Key="Lab.Persona.Face" Color="{StaticResource Lab.Persona.Face.Color}" />
-  <Color x:Key="Lab.Persona.Live.Color">#FF35F5A0</Color>
+  <Color x:Key="Lab.Persona.Live.Color">#FF07884F</Color>
   <SolidColorBrush x:Key="Lab.Persona.Live" Color="{StaticResource Lab.Persona.Live.Color}" />
   <Color x:Key="Lab.Persona.Mane.Color">#FF3B3260</Color>
   <SolidColorBrush x:Key="Lab.Persona.Mane" Color="{StaticResource Lab.Persona.Mane.Color}" />
@@ -61,7 +61,7 @@
   <SolidColorBrush x:Key="Lab.Text.Secondary" Color="{StaticResource Lab.Text.Secondary.Color}" />
   <Color x:Key="Lab.Text.Mono.Color">#FF2B2B2B</Color>
   <SolidColorBrush x:Key="Lab.Text.Mono" Color="{StaticResource Lab.Text.Mono.Color}" />
-  <Color x:Key="Lab.Text.Disabled.Color">#FF525252</Color>
+  <Color x:Key="Lab.Text.Disabled.Color">#FF4D4D4D</Color>
   <SolidColorBrush x:Key="Lab.Text.Disabled" Color="{StaticResource Lab.Text.Disabled.Color}" />
 
   <!-- border -->
@@ -133,7 +133,7 @@
   <!-- Derived: the primary accent under the pointer, washes behind badges and banners, the dialog scrim -->
   <SolidColorBrush x:Key="Lab.Accent.Primary.Hot" Color="#FF7E0039" />
   <SolidColorBrush x:Key="Lab.Wash.Primary" Color="#299E0047" />
-  <SolidColorBrush x:Key="Lab.Wash.Error" Color="#29A80000" />
+  <SolidColorBrush x:Key="Lab.Wash.Error" Color="#29A00000" />
   <SolidColorBrush x:Key="Lab.Wash.Link" Color="#296A1B9A" />
   <SolidColorBrush x:Key="Lab.Wash.Warning" Color="#297A3A00" />
   <SolidColorBrush x:Key="Lab.Wash.Hover" Color="#0A000000" />
@@ -151,7 +151,7 @@
   <Color x:Key="Lab.Fluent.ChromeMedium">#FFF2F2F2</Color>
   <Color x:Key="Lab.Fluent.ChromeMediumLow">#FFFFFFFF</Color>
   <Color x:Key="Lab.Fluent.ChromeLow">#FFFFFFFF</Color>
-  <Color x:Key="Lab.Fluent.ErrorText">#FFA80000</Color>
+  <Color x:Key="Lab.Fluent.ErrorText">#FFA00000</Color>
 
   <!-- Type scale (size, weight, and line height in pixels), spacing and radii -->
   <x:Double x:Key="Lab.Type.Display.Size">28</x:Double>
