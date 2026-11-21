@@ -98,7 +98,7 @@ Each app keeps:
 - The generated files in the repository match the token files.
 
 The light themes Light, GLaDOS, Clippy, Samantha and GERTY share CORA's projector-safe series (CORA T-115), which
-reach at least 4.19:1 on each of their panels and pass the colour-blind separation checks. Because every series token
+clear 3:1 on each of their panels with room to spare and pass the colour-blind separation checks. Because every series token
 passes, CSS and Avalonia draw the same colour; the Avalonia generator's lift for a short series no longer fires.
 
 ## Commands
