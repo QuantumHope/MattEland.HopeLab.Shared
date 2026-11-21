@@ -59,10 +59,10 @@
   --cora-glow-purple:          0 0 14px rgba(123, 61, 158, 0.28);
 
   /* viz */
-  --viz-series-1:              #2a78d6;
-  --viz-series-2:              #eb6834;
-  --viz-series-3:              #1baf7a;
-  --viz-series-4:              #eda100;
+  --viz-series-1:              #2873CE;
+  --viz-series-2:              #C94714;
+  --viz-series-3:              #068063;
+  --viz-series-4:              #A06A00;
   --viz-grid:                  rgba(107, 74, 64, 0.22);
   --viz-axis:                  rgba(107, 74, 64, 0.58);
   --viz-heat-1:                #2a6bb8;
