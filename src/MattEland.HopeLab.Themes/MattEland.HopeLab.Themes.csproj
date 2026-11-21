@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsAotCompatible>true</IsAotCompatible>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <Description>The HopeLab themes for Avalonia: one resource dictionary per shared theme (generated from the token files), the theme catalogue, and the faces the themes use (SIL Open Font License).</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+  </ItemGroup>
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\Fonts\*.ttf" />
+    <None Include="Assets\Fonts\LICENSE-OFL.txt" Pack="true" PackagePath="\fonts\" />
+  </ItemGroup>
+</Project>

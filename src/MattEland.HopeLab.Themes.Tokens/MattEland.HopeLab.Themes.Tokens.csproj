@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsAotCompatible>true</IsAotCompatible>
+    <Description>The HopeLab theme token model: the shared token contract, theme token files, colour maths (contrast, ΔE), and the generators that write Avalonia resource dictionaries and CSS from them.</Description>
+  </PropertyGroup>
+</Project>

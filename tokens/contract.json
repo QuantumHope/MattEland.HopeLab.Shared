@@ -1,0 +1,645 @@
+{
+  "description": "The tokens every HopeLab theme shares. A theme file sets each required token; the rest fall back to the default here. 'css' is the custom property the CSS generator writes; Avalonia keys are 'Lab.' plus the name in Pascal case.",
+  "tokens": [
+    {
+      "name": "surface.canvas",
+      "css": "surface-void",
+      "kind": "color",
+      "required": true,
+      "description": "The application canvas behind everything; also the colour painted before a theme loads."
+    },
+    {
+      "name": "surface.panel",
+      "css": "surface-panel",
+      "kind": "color",
+      "required": true,
+      "description": "Panels and cards on the canvas."
+    },
+    {
+      "name": "surface.elevated",
+      "css": "surface-elevated",
+      "kind": "color",
+      "required": true,
+      "description": "Dialogs, popups and anything raised above a panel."
+    },
+    {
+      "name": "surface.header",
+      "css": "surface-header",
+      "kind": "color",
+      "required": true,
+      "description": "The shell header, and the start of its gradient."
+    },
+    {
+      "name": "surface.header-end",
+      "css": "surface-header-end",
+      "kind": "color",
+      "required": true,
+      "description": "The end of the header gradient."
+    },
+    {
+      "name": "surface.sidebar",
+      "css": "surface-sidebar",
+      "kind": "color",
+      "required": true,
+      "description": "The sidebar, and the start of its gradient."
+    },
+    {
+      "name": "accent.primary",
+      "css": "accent-pink",
+      "kind": "color",
+      "required": true,
+      "description": "Primary actions and the active item. In CORA: STORE."
+    },
+    {
+      "name": "accent.highlight",
+      "css": "accent-yellow",
+      "kind": "color",
+      "required": true,
+      "description": "New things and highlights. In CORA: CREATE."
+    },
+    {
+      "name": "accent.link",
+      "css": "accent-purple",
+      "kind": "color",
+      "required": true,
+      "description": "Links and relationships. In CORA: MERGE."
+    },
+    {
+      "name": "accent.info",
+      "css": "accent-blue",
+      "kind": "color",
+      "required": true,
+      "description": "Information and lookups. In CORA: RETRIEVE."
+    },
+    {
+      "name": "accent.success",
+      "css": "accent-green",
+      "kind": "color",
+      "required": true,
+      "description": "Success states only."
+    },
+    {
+      "name": "accent.error",
+      "css": "accent-error",
+      "kind": "color",
+      "required": true,
+      "description": "Error states only; kept apart from accent.primary."
+    },
+    {
+      "name": "accent.warning",
+      "css": "accent-orange",
+      "kind": "color",
+      "required": true,
+      "description": "Unknown or not-yet-reported states, and warnings."
+    },
+    {
+      "name": "ink.icon",
+      "css": "icon-ink",
+      "kind": "color",
+      "required": true,
+      "description": "An icon drawn on an accent fill. Must reach 4.5:1 on every accent."
+    },
+    {
+      "name": "ink.overlay",
+      "css": "overlay-ink",
+      "kind": "color",
+      "required": true,
+      "description": "The ink of translucent overlays (hairlines, hover washes): light on a dark theme, dark on a light one."
+    },
+    {
+      "name": "persona.face",
+      "css": "surface-chrome",
+      "kind": "color",
+      "required": true,
+      "description": "The assistant's own plates and features."
+    },
+    {
+      "name": "persona.live",
+      "css": "surface-live",
+      "kind": "color",
+      "required": true,
+      "description": "Live traffic, and nothing else."
+    },
+    {
+      "name": "persona.mane",
+      "css": "surface-mane",
+      "kind": "color",
+      "required": true,
+      "description": "The mass the assistant's face emerges from."
+    },
+    {
+      "name": "persona.hot",
+      "css": "surface-hot",
+      "kind": "color",
+      "required": true,
+      "description": "Reserved for where the assistant is looking."
+    },
+    {
+      "name": "persona.signature",
+      "css": "surface-signature",
+      "kind": "color",
+      "required": true,
+      "description": "The theme's signature colour on the assistant's face."
+    },
+    {
+      "name": "text.primary",
+      "css": "text-primary-dark",
+      "kind": "color",
+      "required": true,
+      "description": "Body text."
+    },
+    {
+      "name": "text.secondary",
+      "css": "text-secondary-dark",
+      "kind": "color",
+      "required": true,
+      "description": "Secondary text: captions, hints, metadata."
+    },
+    {
+      "name": "text.mono",
+      "css": "text-machine",
+      "kind": "color",
+      "required": true,
+      "description": "Monospaced data text (identifiers, timestamps, status)."
+    },
+    {
+      "name": "text.disabled",
+      "css": "text-disabled",
+      "kind": "color",
+      "required": true,
+      "description": "Disabled text. Exempt from contrast floors."
+    },
+    {
+      "name": "border.header",
+      "css": "border-header",
+      "kind": "color",
+      "required": true,
+      "description": "The rule under the header."
+    },
+    {
+      "name": "border.subtle",
+      "css": "border-subtle",
+      "kind": "color",
+      "required": true,
+      "description": "Hairlines between rows and panels."
+    },
+    {
+      "name": "border.input",
+      "css": "border-input",
+      "kind": "color",
+      "required": true,
+      "description": "Text boxes and other inputs at rest."
+    },
+    {
+      "name": "border.focus",
+      "css": "border-focus",
+      "kind": "color",
+      "required": true,
+      "description": "The focus ring."
+    },
+    {
+      "name": "gradient.header",
+      "css": "gradient-header",
+      "kind": "gradient",
+      "required": true,
+      "description": "The header's fill."
+    },
+    {
+      "name": "gradient.sidebar",
+      "css": "gradient-sidebar",
+      "kind": "gradient",
+      "required": true,
+      "description": "The sidebar's fill."
+    },
+    {
+      "name": "gradient.user-bubble",
+      "css": "gradient-user-bubble",
+      "kind": "gradient",
+      "required": true,
+      "description": "A chat message from the user."
+    },
+    {
+      "name": "gradient.assistant-bubble",
+      "css": "gradient-cora-bubble",
+      "kind": "gradient",
+      "required": true,
+      "description": "A chat message from the assistant."
+    },
+    {
+      "name": "glow.primary",
+      "css": "glow-pink",
+      "kind": "shadow",
+      "required": true,
+      "description": "A glow in accent.primary."
+    },
+    {
+      "name": "glow.info",
+      "css": "glow-blue",
+      "kind": "shadow",
+      "required": true,
+      "description": "A glow in accent.info."
+    },
+    {
+      "name": "glow.link",
+      "css": "glow-purple",
+      "kind": "shadow",
+      "required": true,
+      "description": "A glow in accent.link."
+    },
+    {
+      "name": "glow.node-active",
+      "css": "glow-node-active",
+      "kind": "shadow",
+      "required": true,
+      "description": "The glow around the active node in a graph; usually the node's own colour."
+    },
+    {
+      "name": "glow.highlight",
+      "css": "cora-glow-yellow",
+      "kind": "shadow",
+      "required": true,
+      "description": "A glow in accent.highlight."
+    },
+    {
+      "name": "glow.highlight-hover",
+      "css": "cora-glow-yellow-hover",
+      "kind": "shadow",
+      "required": true,
+      "description": "The highlight glow under the pointer."
+    },
+    {
+      "name": "glow.link-strong",
+      "css": "cora-glow-purple",
+      "kind": "shadow",
+      "required": true,
+      "description": "A strong glow in accent.link."
+    },
+    {
+      "name": "viz.series-1",
+      "css": "viz-series-1",
+      "kind": "color",
+      "required": true,
+      "description": "Chart series 1. A non-text mark: 3:1 on the panel."
+    },
+    {
+      "name": "viz.series-2",
+      "css": "viz-series-2",
+      "kind": "color",
+      "required": true,
+      "description": "Chart series 2. A non-text mark: 3:1 on the panel."
+    },
+    {
+      "name": "viz.series-3",
+      "css": "viz-series-3",
+      "kind": "color",
+      "required": true,
+      "description": "Chart series 3. A non-text mark: 3:1 on the panel."
+    },
+    {
+      "name": "viz.series-4",
+      "css": "viz-series-4",
+      "kind": "color",
+      "required": true,
+      "description": "Chart series 4. A non-text mark: 3:1 on the panel."
+    },
+    {
+      "name": "viz.grid",
+      "css": "viz-grid",
+      "kind": "color",
+      "required": true,
+      "description": "Chart grid lines."
+    },
+    {
+      "name": "viz.axis",
+      "css": "viz-axis",
+      "kind": "color",
+      "required": true,
+      "description": "Chart axes and their labels."
+    },
+    {
+      "name": "viz.heat-1",
+      "css": "viz-heat-1",
+      "kind": "color",
+      "required": true,
+      "description": "Heat scale, step 1 of 5 (cool to hot)."
+    },
+    {
+      "name": "viz.heat-2",
+      "css": "viz-heat-2",
+      "kind": "color",
+      "required": true,
+      "description": "Heat scale, step 2 of 5 (cool to hot)."
+    },
+    {
+      "name": "viz.heat-3",
+      "css": "viz-heat-3",
+      "kind": "color",
+      "required": true,
+      "description": "Heat scale, step 3 of 5 (cool to hot)."
+    },
+    {
+      "name": "viz.heat-4",
+      "css": "viz-heat-4",
+      "kind": "color",
+      "required": true,
+      "description": "Heat scale, step 4 of 5 (cool to hot)."
+    },
+    {
+      "name": "viz.heat-5",
+      "css": "viz-heat-5",
+      "kind": "color",
+      "required": true,
+      "description": "Heat scale, step 5 of 5 (cool to hot)."
+    },
+    {
+      "name": "persona.line",
+      "css": "her-line",
+      "kind": "number",
+      "default": "1",
+      "description": "Multiplier on the stroke width of the assistant's seams, features and eyes."
+    },
+    {
+      "name": "persona.plate",
+      "css": "her-plate",
+      "kind": "number",
+      "default": "1",
+      "description": "Multiplier on the alpha of the assistant's plates."
+    },
+    {
+      "name": "persona.seam",
+      "css": "her-seam",
+      "kind": "number",
+      "default": "1",
+      "description": "Multiplier on the alpha of the assistant's seams and features."
+    },
+    {
+      "name": "persona.glow",
+      "css": "her-glow",
+      "kind": "number",
+      "default": "0",
+      "description": "Blur in pixels around the assistant's features and eyes; 0 is none."
+    },
+    {
+      "name": "persona.chrome",
+      "css": "her-signature",
+      "kind": "keyword",
+      "default": "none",
+      "description": "Which signature detail the theme's chrome draws, by theme id, or none."
+    },
+    {
+      "name": "font.mono",
+      "css": "font-machine",
+      "kind": "font",
+      "default": "\"JetBrains Mono\", \"Fira Code\", \"Cascadia Code\", monospace",
+      "base": true,
+      "description": "Monospaced text."
+    },
+    {
+      "name": "font.body",
+      "css": "font-persona",
+      "kind": "font",
+      "default": "\"Inter\", \"DM Sans\", system-ui, -apple-system, sans-serif",
+      "base": true,
+      "description": "Body and interface text."
+    },
+    {
+      "name": "font.display",
+      "css": "font-display",
+      "kind": "font",
+      "default": "{font.body}",
+      "base": true,
+      "description": "Page and section headings."
+    },
+    {
+      "name": "font.surface",
+      "css": "font-surface",
+      "kind": "font",
+      "default": "{font.mono}",
+      "description": "Text drawn on the theme's own chrome (panels, plates, labels)."
+    },
+    {
+      "name": "type.display.size",
+      "css": "type-display-size",
+      "kind": "dimension",
+      "default": "28",
+      "base": true,
+      "description": "Page titles: size."
+    },
+    {
+      "name": "type.display.weight",
+      "css": "type-display-weight",
+      "kind": "number",
+      "default": "600",
+      "base": true,
+      "description": "Page titles: weight."
+    },
+    {
+      "name": "type.display.line-height",
+      "css": "type-display-lh",
+      "kind": "number",
+      "default": "1.2",
+      "base": true,
+      "description": "Page titles: line height, as a multiple of the size."
+    },
+    {
+      "name": "type.heading.size",
+      "css": "type-heading-size",
+      "kind": "dimension",
+      "default": "20",
+      "base": true,
+      "description": "Section headings: size."
+    },
+    {
+      "name": "type.heading.weight",
+      "css": "type-heading-weight",
+      "kind": "number",
+      "default": "600",
+      "base": true,
+      "description": "Section headings: weight."
+    },
+    {
+      "name": "type.heading.line-height",
+      "css": "type-heading-lh",
+      "kind": "number",
+      "default": "1.3",
+      "base": true,
+      "description": "Section headings: line height, as a multiple of the size."
+    },
+    {
+      "name": "type.subheading.size",
+      "css": "type-subheading-size",
+      "kind": "dimension",
+      "default": "16",
+      "base": true,
+      "description": "Subheadings: size."
+    },
+    {
+      "name": "type.subheading.weight",
+      "css": "type-subheading-weight",
+      "kind": "number",
+      "default": "500",
+      "base": true,
+      "description": "Subheadings: weight."
+    },
+    {
+      "name": "type.subheading.line-height",
+      "css": "type-subheading-lh",
+      "kind": "number",
+      "default": "1.4",
+      "base": true,
+      "description": "Subheadings: line height, as a multiple of the size."
+    },
+    {
+      "name": "type.body.size",
+      "css": "type-body-size",
+      "kind": "dimension",
+      "default": "14",
+      "base": true,
+      "description": "Body text: size."
+    },
+    {
+      "name": "type.body.weight",
+      "css": "type-body-weight",
+      "kind": "number",
+      "default": "400",
+      "base": true,
+      "description": "Body text: weight."
+    },
+    {
+      "name": "type.body.line-height",
+      "css": "type-body-lh",
+      "kind": "number",
+      "default": "1.6",
+      "base": true,
+      "description": "Body text: line height, as a multiple of the size."
+    },
+    {
+      "name": "type.label.size",
+      "css": "type-label-size",
+      "kind": "dimension",
+      "default": "12",
+      "base": true,
+      "description": "Labels and buttons: size."
+    },
+    {
+      "name": "type.label.weight",
+      "css": "type-label-weight",
+      "kind": "number",
+      "default": "500",
+      "base": true,
+      "description": "Labels and buttons: weight."
+    },
+    {
+      "name": "type.label.line-height",
+      "css": "type-label-lh",
+      "kind": "number",
+      "default": "1.4",
+      "base": true,
+      "description": "Labels and buttons: line height, as a multiple of the size."
+    },
+    {
+      "name": "type.micro.size",
+      "css": "type-micro-size",
+      "kind": "dimension",
+      "default": "11",
+      "base": true,
+      "description": "The smallest text: badges, footnotes: size."
+    },
+    {
+      "name": "type.micro.weight",
+      "css": "type-micro-weight",
+      "kind": "number",
+      "default": "400",
+      "base": true,
+      "description": "The smallest text: badges, footnotes: weight."
+    },
+    {
+      "name": "type.micro.line-height",
+      "css": "type-micro-lh",
+      "kind": "number",
+      "default": "1.4",
+      "base": true,
+      "description": "The smallest text: badges, footnotes: line height, as a multiple of the size."
+    },
+    {
+      "name": "type.machine.size",
+      "css": "type-machine-size",
+      "kind": "dimension",
+      "default": "12",
+      "base": true,
+      "description": "Monospaced data text: size."
+    },
+    {
+      "name": "type.machine.weight",
+      "css": "type-machine-weight",
+      "kind": "number",
+      "default": "400",
+      "base": true,
+      "description": "Monospaced data text: weight."
+    },
+    {
+      "name": "type.machine.line-height",
+      "css": "type-machine-lh",
+      "kind": "number",
+      "default": "1.5",
+      "base": true,
+      "description": "Monospaced data text: line height, as a multiple of the size."
+    },
+    {
+      "name": "space.xs",
+      "css": "space-xs",
+      "kind": "dimension",
+      "default": "4",
+      "base": true,
+      "description": "Icon gaps, inline and badge padding."
+    },
+    {
+      "name": "space.sm",
+      "css": "space-sm",
+      "kind": "dimension",
+      "default": "8",
+      "base": true,
+      "description": "Padding inside a component."
+    },
+    {
+      "name": "space.md",
+      "css": "space-md",
+      "kind": "dimension",
+      "default": "16",
+      "base": true,
+      "description": "Card padding, list spacing."
+    },
+    {
+      "name": "space.lg",
+      "css": "space-lg",
+      "kind": "dimension",
+      "default": "24",
+      "base": true,
+      "description": "Section spacing, panel gutters."
+    },
+    {
+      "name": "space.xl",
+      "css": "space-xl",
+      "kind": "dimension",
+      "default": "32",
+      "base": true,
+      "description": "Major section breaks."
+    },
+    {
+      "name": "space.2xl",
+      "css": "space-2xl",
+      "kind": "dimension",
+      "default": "48",
+      "base": true,
+      "description": "Top-level layout spacing."
+    },
+    {
+      "name": "space.3xl",
+      "css": "space-3xl",
+      "kind": "dimension",
+      "default": "64",
+      "base": true,
+      "description": "Page-level spacing."
+    }
+  ]
+}
