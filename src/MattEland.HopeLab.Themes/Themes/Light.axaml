@@ -101,13 +101,13 @@
   <BoxShadows x:Key="Lab.Glow.LinkStrong">0 0 18 0 #B2C490D1</BoxShadows>
 
   <!-- viz -->
-  <Color x:Key="Lab.Viz.Series1.Color">#FF2A78D6</Color>
+  <Color x:Key="Lab.Viz.Series1.Color">#FF2873CE</Color>
   <SolidColorBrush x:Key="Lab.Viz.Series1" Color="{StaticResource Lab.Viz.Series1.Color}" />
-  <Color x:Key="Lab.Viz.Series2.Color">#FFEB6834</Color>
+  <Color x:Key="Lab.Viz.Series2.Color">#FFC94714</Color>
   <SolidColorBrush x:Key="Lab.Viz.Series2" Color="{StaticResource Lab.Viz.Series2.Color}" />
-  <Color x:Key="Lab.Viz.Series3.Color">#FF148A5E</Color>
+  <Color x:Key="Lab.Viz.Series3.Color">#FF068063</Color>
   <SolidColorBrush x:Key="Lab.Viz.Series3" Color="{StaticResource Lab.Viz.Series3.Color}" />
-  <Color x:Key="Lab.Viz.Series4.Color">#FF9C6B00</Color>
+  <Color x:Key="Lab.Viz.Series4.Color">#FFA06A00</Color>
   <SolidColorBrush x:Key="Lab.Viz.Series4" Color="{StaticResource Lab.Viz.Series4.Color}" />
   <Color x:Key="Lab.Viz.Grid.Color">#475A4E7C</Color>
   <SolidColorBrush x:Key="Lab.Viz.Grid" Color="{StaticResource Lab.Viz.Grid.Color}" />

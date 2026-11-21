@@ -93,12 +93,13 @@ Each app keeps:
 - Text, and the accents (used as text and icons), reach 4.5:1 on the canvas, panel, elevated and header surfaces; 7:1
   in a high-contrast theme.
 - `ink.icon` reaches 4.5:1 on every accent.
+- The four chart series reach 3:1 on the panel (WCAG 1.4.11; a series is a non-text mark).
 - The seven accents stay at least ΔE 12 apart, because each one means something.
 - The generated files in the repository match the token files.
 
-Chart series are non-text marks and need 3:1 on the panel. Five light themes (Light, GLaDOS, Clippy, Samantha, GERTY)
-have series 2 to 4 below that; the CSS keeps the token value and Avalonia lifts it, as OneRing did. Fixing the token
-values fixes both.
+The light themes Light, GLaDOS, Clippy, Samantha and GERTY share CORA's projector-safe series (CORA T-115), which
+reach at least 4.19:1 on each of their panels and pass the colour-blind separation checks. Because every series token
+passes, CSS and Avalonia draw the same colour; the Avalonia generator's lift for a short series no longer fires.
 
 ## Commands
 

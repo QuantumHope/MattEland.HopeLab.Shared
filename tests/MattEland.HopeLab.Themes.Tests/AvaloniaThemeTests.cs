@@ -31,8 +31,7 @@ public sealed class AvaloniaThemeTests
                     var brush = Assert.IsAssignableFrom<ISolidColorBrush>(Get(d, t.ResourceKey));
                     var color = Assert.IsType<Color>(Get(d, t.ResourceKey + ".Color"));
                     Assert.Equal(brush.Color, color);
-                    if (!t.Name.StartsWith("viz.series-", StringComparison.Ordinal)) // lifted to 3:1 where short
-                        Assert.Equal(Color.Parse(c.ToString()), color);
+                    Assert.Equal(Color.Parse(c.ToString()), color); // chart series too: every token reaches 3:1, so none is lifted
                     break;
                 case TokenKind.Gradient:
                     Assert.IsAssignableFrom<IBrush>(Get(d, t.ResourceKey));

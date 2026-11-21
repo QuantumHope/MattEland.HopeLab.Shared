@@ -5,7 +5,8 @@ namespace MattEland.HopeLab.Themes.Tests;
 /// <summary>
 /// The rules every theme is held to, wherever it's drawn: every required token set, and text and accents that pass
 /// contrast. The floors are WCAG 1.4.3 AA (4.5:1) for text and for the accents, which are used as text and icon colour,
-/// and 1.4.6 AAA (7:1) in a high-contrast theme.
+/// and 1.4.6 AAA (7:1) in a high-contrast theme. Chart series are non-text marks, held to WCAG 1.4.11 (3:1) on the
+/// panel a chart sits on.
 /// </summary>
 public sealed class TokenRuleTests
 {
@@ -13,6 +14,8 @@ public sealed class TokenRuleTests
     private static readonly string[] Text = ["text.primary", "text.secondary", "text.mono"];
     private static readonly string[] Accents =
         ["accent.primary", "accent.highlight", "accent.link", "accent.info", "accent.success", "accent.error", "accent.warning"];
+
+    private static readonly string[] Series = ["viz.series-1", "viz.series-2", "viz.series-3", "viz.series-4"];
 
     /// <summary>The accents' meanings, which must stay apart in every theme.</summary>
     private const double MinAccentDeltaE = 12;
@@ -75,6 +78,15 @@ public sealed class TokenRuleTests
     {
         var theme = Repo.Theme(id);
         Assert.Empty(Failures(theme, Accents, theme.Theme.HighContrast ? 7 : 4.5));
+    }
+
+    [Theory, MemberData(nameof(Themes))]
+    public void Has_chart_series_that_reach_3_to_1_on_the_panel(string id)
+    {
+        var theme = Repo.Theme(id);
+        var panel = theme.Color("surface.panel")!.Value;
+        Assert.Empty(Series.Select(s => (s, r: theme.Color(s)!.Value.Contrast(panel))).Where(x => x.r < 3)
+            .Select(x => $"{x.s} on surface.panel: {x.r:0.00}"));
     }
 
     [Theory, MemberData(nameof(Themes))]
