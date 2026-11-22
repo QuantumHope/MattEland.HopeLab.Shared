@@ -42,6 +42,8 @@ env:
 jobs:
   version:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read # only the release job writes
     outputs:
       version: ${{ steps.v.outputs.version }}
       tag: ${{ steps.v.outputs.tag }}
@@ -51,12 +53,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # the token stays saved: git ls-remote below needs it for a private app
       - uses: actions/checkout@v4
         with:
           repository: QuantumHope/MattEland.HopeLab.Shared
           ref: ${{ inputs.shared-ref }}
           path: ${{ env.SHARED }}
+          persist-credentials: false
       - id: v
         run: |
           version=$(python3 "$SHARED/installers/release/hopelab_release.py" version "${{ inputs.config }}" "$(git rev-list --count HEAD)")
@@ -81,16 +84,21 @@ jobs:
           # ubuntu-22.04: builds link against its glibc (2.35), which Pop!_OS 22.04, Ubuntu 22.04 and newer have.
           - { os: ubuntu-22.04, rid: linux-x64 }
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read # only the release job writes
     env:
       VERSION: ${{ needs.version.outputs.version }}
       RID: ${{ matrix.rid }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false # these jobs only read the code; nothing here pushes
       - uses: actions/checkout@v4
         with:
           repository: QuantumHope/MattEland.HopeLab.Shared
           ref: ${{ inputs.shared-ref }}
           path: ${{ env.SHARED }}
+          persist-credentials: false
       - uses: actions/setup-dotnet@v4
         if: hashFiles('global.json') != ''
         with:
@@ -188,6 +196,7 @@ jobs:
           repository: QuantumHope/MattEland.HopeLab.Shared
           ref: ${{ inputs.shared-ref }}
           path: ${{ env.SHARED }}
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -249,6 +258,8 @@ jobs:
       matrix:
         os: [windows-latest, ubuntu-22.04]
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read # only the release job writes
     env:
       VERSION: ${{ needs.version.outputs.version }}
       TAG: ${{ needs.version.outputs.tag }}
@@ -257,11 +268,14 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false # these jobs only read the code; nothing here pushes
       - uses: actions/checkout@v4
         with:
           repository: QuantumHope/MattEland.HopeLab.Shared
           ref: ${{ inputs.shared-ref }}
           path: ${{ env.SHARED }}
+          persist-credentials: false
       - name: Read hopelab-app.json and the previous release
         shell: bash
         run: |
